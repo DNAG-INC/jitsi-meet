@@ -258,5 +258,13 @@ export default [
     'watchRTCConfigParams.rtcToken',
     'webrtcIceTcpDisable',
     'webrtcIceUdpDisable',
-    'whiteboard.enabled'
+    'whiteboard.enabled',
+    // AAuti fork: allow the React app to override per-environment WaveBook
+    // endpoints via JitsiMeetExternalAPI configOverwrite. Sourced from AAuti's
+    // REACT_APP_WAVEBOOK_* env vars so dev/sandbox/prod each route to the
+    // matching WaveBook instance. apiKey is the tenant key (already client-
+    // visible in AAuti's bundle today, so this is no extra exposure).
+    'whiteboard.apiKey',
+    'whiteboard.apiUrl',
+    'whiteboard.collabServerBaseUrl'
 ].concat(extraConfigWhitelist).concat(isEmbedded() ? isEmbeddedConfigWhitelist : []);

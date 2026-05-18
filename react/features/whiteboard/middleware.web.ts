@@ -1,4 +1,3 @@
-import { generateCollaborationLinkData } from '@jitsi/excalidraw';
 import { AnyAction } from 'redux';
 
 import { IStore } from '../app/types';
@@ -8,7 +7,6 @@ import { isDialogOpen } from '../base/dialog/functions';
 import { participantJoined, participantLeft, pinParticipant } from '../base/participants/actions';
 import { FakeParticipant } from '../base/participants/types';
 import MiddlewareRegistry from '../base/redux/MiddlewareRegistry';
-import { getCurrentRoomId } from '../breakout-rooms/functions';
 import { addStageParticipant } from '../filmstrip/actions.web';
 import { isStageFilmstripAvailable } from '../filmstrip/functions.web';
 
@@ -21,7 +19,6 @@ import {
 import WhiteboardLimitDialog from './components/web/WhiteboardLimitDialog';
 import { WHITEBOARD_ID, WHITEBOARD_PARTICIPANT_NAME } from './constants';
 import {
-    generateCollabServerUrl,
     getCollabDetails,
     isWhiteboardPresent,
     shouldEnforceUserLimit,
@@ -79,7 +76,7 @@ MiddlewareRegistry.register((store: IStore) => (next: Function) => (action: AnyA
             return next(action);
         }
 
-        if (!existingCollabDetails) {
+        if (action.isOpen && !existingCollabDetails) {
             setNewWhiteboardOpen(store);
 
             return next(action);
@@ -136,27 +133,21 @@ function raiseWhiteboardNotification(status: WhiteboardStatus) {
 
 /**
  * Sets a new whiteboard open.
+ * WaveBook integration: dispatch setupWhiteboard with empty collab details so
+ * the reducer flips isOpen=true and the picker renders. The picker dispatches
+ * selectWhiteboardBoard once the user picks/creates a board, which replaces
+ * collabDetails with the actual board id and broadcasts via metadata.
  *
  * @param {IStore} store - The redux store.
- * @returns {Promise}
+ * @returns {void}
  */
-async function setNewWhiteboardOpen(store: IStore) {
-    const { dispatch, getState } = store;
-    const collabLinkData = await generateCollaborationLinkData();
-    const state = getState();
-    const conference = getCurrentConference(state);
-    const collabServerUrl = generateCollabServerUrl(state);
-    const roomId = getCurrentRoomId(state);
-    const collabData = {
-        collabDetails: {
-            roomId,
-            roomKey: collabLinkData.roomKey
-        },
-        collabServerUrl
-    };
+function setNewWhiteboardOpen(store: IStore) {
+    const { dispatch } = store;
 
     focusWhiteboard(store);
-    dispatch(setupWhiteboard(collabData));
-    conference?.getMetadataHandler().setMetadata(WHITEBOARD_ID, collabData);
+    dispatch(setupWhiteboard({
+        collabDetails: { roomId: '', roomKey: '' },
+        collabServerUrl: ''
+    }));
     raiseWhiteboardNotification(WhiteboardStatus.INSTANTIATED);
 }

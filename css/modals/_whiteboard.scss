@@ -5,3 +5,22 @@
         width: 100vw;
     }
 }
+
+/* AAuti WaveBook integration: in-meeting whiteboard panel sizing + interactivity. */
+.whiteboard-container {
+    pointer-events: auto !important;
+
+    .excalidraw-wrapper {
+        height: 100% !important;
+        width: 100% !important;
+        pointer-events: auto !important;
+        position: relative;
+        z-index: 10;
+
+        iframe {
+            pointer-events: auto !important;
+            position: relative;
+            z-index: 11;
+        }
+    }
+}

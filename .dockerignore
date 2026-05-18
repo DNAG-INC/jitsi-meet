@@ -1,0 +1,49 @@
+# Keep the docker build context lean — anything listed here is NOT sent to
+# the Docker daemon when building from this directory.
+
+# Dependencies — installed fresh inside the builder stage
+node_modules
+**/node_modules
+
+# Build outputs — produced inside the container, no need to send them in
+libs
+build
+dist
+output
+
+# Local dev / test artifacts
+build.log
+*.log
+static/local-test
+docker-build.ps1
+Dockerfile.build
+
+# Git / editor / OS noise
+.git
+.gitignore
+.github
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Mobile-only assets (not used in web deploy)
+android
+ios
+
+# Tests + e2e harness
+tests
+e2e
+
+# Docs / readmes
+*.md
+docs
+
+# Other build configs we don't need at runtime
+.npmrc
+.nvmrc
+.editorconfig
+.prettierrc*
+.eslintrc*
+.eslintignore
+.stylelintrc*

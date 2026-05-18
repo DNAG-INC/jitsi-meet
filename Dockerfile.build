@@ -1,0 +1,14 @@
+# Build environment for jitsi-meet (AAuti fork).
+# Used by docker-build.ps1 to produce the web bundle inside a Linux container.
+
+FROM node:24-bookworm
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        make \
+        python3 \
+        git \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app

@@ -142,6 +142,8 @@ export interface INoiseSuppressionConfig {
 }
 
 export interface IWhiteboardConfig {
+    apiKey?: string;
+    apiUrl?: string;
     collabServerBaseUrl?: string;
     enabled?: boolean;
     limitUrl?: string;

@@ -1,18 +1,17 @@
-import { ExcalidrawApp } from '@jitsi/excalidraw';
-import i18next from 'i18next';
-import React, { useCallback, useRef } from 'react';
+import React from 'react';
+import { useSelector } from 'react-redux';
 
-import { WHITEBOARD_UI_OPTIONS } from '../../constants';
+import { IReduxState } from '../../../app/types';
 
 /**
- * Whiteboard wrapper for mobile.
+ * Whiteboard wrapper.
+ * Renders the AAuti WaveBook embed in place of the default Excalidraw whiteboard.
  *
  * @returns {JSX.Element}
  */
 const WhiteboardWrapper = ({
     className,
     collabDetails,
-    collabServerUrl,
     localParticipantName
 }: {
     className?: string;
@@ -23,46 +22,32 @@ const WhiteboardWrapper = ({
     collabServerUrl: string;
     localParticipantName: string;
 }) => {
-    const excalidrawRef = useRef<any>(null);
-    const excalidrawAPIRef = useRef<any>(null);
-    const collabAPIRef = useRef<any>(null);
+    const { collabServerBaseUrl, apiKey } = useSelector(
+        (state: IReduxState) => state['features/base/config'].whiteboard || {}
+    );
 
-    const getExcalidrawAPI = useCallback(excalidrawAPI => {
-        if (excalidrawAPIRef.current) {
-            return;
-        }
-        excalidrawAPIRef.current = excalidrawAPI;
-    }, []);
+    if (!collabServerBaseUrl) {
+        return null;
+    }
 
-    const getCollabAPI = useCallback(collabAPI => {
-        if (collabAPIRef.current) {
-            return;
-        }
-        collabAPIRef.current = collabAPI;
-        collabAPIRef.current.setUsername(localParticipantName);
-    }, [ localParticipantName ]);
+    const base = collabServerBaseUrl.replace(/\/$/, '');
+    const embedUrl = `${base}/embed/${collabDetails.roomId}`
+        + `?userId=${encodeURIComponent(localParticipantName || '')}`
+        + `&userName=${encodeURIComponent(localParticipantName || '')}`
+        + (apiKey ? `&apiKey=${encodeURIComponent(apiKey)}` : '');
 
     return (
         <div className = { className }>
-            <div className = 'excalidraw-wrapper'>
-                <ExcalidrawApp
-                    collabDetails = { collabDetails }
-                    collabServerUrl = { collabServerUrl }
-                    detectScroll = { true }
-                    excalidraw = {{
-                        isCollaborating: true,
-                        langCode: i18next.language,
-
-                        // @ts-ignore
-                        ref: excalidrawRef,
-                        theme: 'light',
-                        UIOptions: WHITEBOARD_UI_OPTIONS
-                    }}
-                    getCollabAPI = { getCollabAPI }
-                    getExcalidrawAPI = { getExcalidrawAPI } />
-            </div>
-
-
+            <iframe
+                allow = 'clipboard-write; fullscreen'
+                allowFullScreen = { true }
+                src = { embedUrl }
+                style = {{
+                    border: 0,
+                    height: '100%',
+                    width: '100%'
+                }}
+                title = 'Whiteboard' />
         </div>
     );
 };

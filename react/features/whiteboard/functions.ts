@@ -1,3 +1,5 @@
+// @ts-expect-error
+import jwtDecode from 'jwt-decode';
 import md5 from 'js-md5';
 
 import { getParticipantCount, getPinnedParticipant } from '../../features/base/participants/functions';
@@ -11,6 +13,63 @@ import { getCurrentRoomId, isInBreakoutRoom } from '../breakout-rooms/functions'
 
 import { MIN_USER_LIMIT, USER_LIMIT_THRESHOLD, WHITEBOARD_ID, WHITEBOARD_PATH_NAME } from './constants';
 import { IWhiteboardState } from './reducer';
+
+/**
+ * Pulls AAuti-specific WaveBook claims from the JWT custom metadata.
+ * AAuti's Jitsi launch must mint a JWT with:
+ *   {
+ *     context: {
+ *       user: { id, name },
+ *       metadata: {
+ *         sessionId, userRole, category, subCategory, instituteId
+ *       }
+ *     }
+ *   }
+ * Returns null if no JWT or decode failure. Picker/Whiteboard fall back to
+ * config.whiteboard.testXxx values for local dev.
+ */
+export interface IWaveBookMember {
+    name: string;
+    role: 'editor' | 'viewer';
+    userId: string;
+}
+
+export interface IWaveBookJwtContext {
+    category?: string;
+    instituteId?: string;
+    members?: IWaveBookMember[];
+    sessionId?: string;
+    subCategory?: string;
+    userId?: string;
+    userName?: string;
+    userRole?: string;
+}
+
+export const getWaveBookJwtContext = (state: IReduxState): IWaveBookJwtContext | null => {
+    const jwt = state['features/base/jwt']?.jwt;
+
+    if (!jwt) {
+        return null;
+    }
+    try {
+        const payload: any = jwtDecode(jwt);
+        const ctx = payload?.context || {};
+        const meta = ctx.metadata || {};
+
+        return {
+            userId: ctx.user?.id,
+            userName: ctx.user?.name,
+            sessionId: meta.sessionId,
+            userRole: meta.userRole,
+            category: meta.category,
+            subCategory: meta.subCategory,
+            instituteId: meta.instituteId,
+            members: Array.isArray(meta.members) ? meta.members : []
+        };
+    } catch {
+        return null;
+    }
+};
 
 const getWhiteboardState = (state: IReduxState): IWhiteboardState => state['features/whiteboard'];
 
@@ -67,12 +126,15 @@ export const isWhiteboardOpen = (state: IReduxState): boolean => getWhiteboardSt
 
 /**
  * Indicates whether the whiteboard button is visible.
+ * AAuti policy: only moderators can show/hide the whiteboard. Non-moderators
+ * never see the button; they receive the whiteboard panel automatically
+ * (via the metadata broadcast) once a moderator opens one.
  *
  * @param {IReduxState} state - The state from the Redux store.
  * @returns {boolean}
  */
 export const isWhiteboardButtonVisible = (state: IReduxState): boolean =>
-    isWhiteboardEnabled(state) && (isLocalParticipantModerator(state) || isWhiteboardOpen(state));
+    isWhiteboardEnabled(state) && isLocalParticipantModerator(state);
 
 /**
  * Indicates whether the whiteboard is present as a meeting participant.
