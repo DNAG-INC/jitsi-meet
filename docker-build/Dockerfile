@@ -95,9 +95,9 @@ COPY --from=builder /src/resources/robots.txt /usr/share/jitsi-meet/
 # Overlay templates, init scripts, and entrypoint from docker-build/
 COPY docker-build/defaults                   /defaults
 COPY docker-build/etc                        /etc
-COPY docker-build/docker-entrypoint-jitsi.sh /docker-entrypoint-jitsi.sh
+# COPY docker-build/docker-entrypoint-jitsi.sh /docker-entrypoint-jitsi.sh
 
-RUN chmod +x /docker-entrypoint-jitsi.sh /etc/cont-init.d/*
+# RUN chmod +x /docker-entrypoint-jitsi.sh /etc/cont-init.d/*
 
 EXPOSE 80
 WORKDIR /usr/share/jitsi-meet
