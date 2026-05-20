@@ -1,0 +1,403 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1779104972948,
+  "projectRoot": "d:\\Projects\\jitsi-meet",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": ">=22.0.0",
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "Ruby",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "Gemfile"
+        ]
+      },
+      {
+        "name": "C/C++",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "Makefile"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "react",
+        "version": "18.2.0",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "18.2.0",
+        "category": "frontend"
+      },
+      {
+        "name": "webpack",
+        "version": "5.95.0",
+        "category": "build"
+      }
+    ],
+    "packageManager": "bundler",
+    "runtime": "Node.js 22.0.0"
+  },
+  "build": {
+    "buildCommand": "make build",
+    "testCommand": "npm test",
+    "lintCommand": "npm run lint",
+    "devCommand": "npm run start",
+    "scripts": {
+      "lint": "eslint --ext .js,.ts,.tsx --max-warnings 0 . && tsc --noEmit",
+      "tsc:web": "tsc --noEmit --project tsconfig.web.json",
+      "tsc:native": "tsc --noEmit --project tsconfig.native.json",
+      "tsc:ci": "npm run tsc:web && npm run tsc:native",
+      "lint:ci": "eslint --ext .js,.ts,.tsx --max-warnings 0 .",
+      "lint:lang": "for file in lang/*.json; do npx --yes jsonlint -q $file || exit 1; done",
+      "lang-sort": "./resources/lang-sort.sh",
+      "lint-fix": "eslint --ext .js,.ts,.tsx --max-warnings 0 --fix .",
+      "postinstall": "patch-package --error-on-fail && jetify",
+      "validate": "npm ls",
+      "start": "make dev",
+      "test": "DOTENV_CONFIG_PATH=tests/.env wdio run tests/wdio.conf.ts",
+      "test-single": "DOTENV_CONFIG_PATH=tests/.env wdio run tests/wdio.conf.ts --spec",
+      "test-ff-single": "DOTENV_CONFIG_PATH=tests/.env wdio run tests/wdio.firefox.conf.ts --spec",
+      "test-ff": "DOTENV_CONFIG_PATH=tests/.env wdio run tests/wdio.firefox.conf.ts",
+      "test-dev": "DOTENV_CONFIG_PATH=tests/.env wdio run tests/wdio.dev.conf.ts",
+      "test-dev-single": "DOTENV_CONFIG_PATH=tests/.env wdio run tests/wdio.dev.conf.ts --spec",
+      "test-grid": "DOTENV_CONFIG_PATH=tests/.env wdio run tests/wdio.grid.conf.ts",
+      "test-grid-single": "DOTENV_CONFIG_PATH=tests/.env wdio run tests/wdio.grid.conf.ts --spec",
+      "test-grid-ff": "DOTENV_CONFIG_PATH=tests/.env wdio run tests/wdio.grid.firefox.conf.ts",
+      "test-grid-ff-single": "DOTENV_CONFIG_PATH=tests/.env wdio run tests/wdio.grid.firefox.conf.ts --spec"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "static",
+      "tests"
+    ],
+    "gitBranches": {
+      "defaultBranch": "master",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "android": {
+      "path": "android",
+      "purpose": null,
+      "fileCount": 6,
+      "lastAccessed": 1779104972875,
+      "keyFiles": [
+        "build.gradle",
+        "gradle.properties",
+        "gradlew",
+        "gradlew.bat",
+        "README.md"
+      ]
+    },
+    "css": {
+      "path": "css",
+      "purpose": null,
+      "fileCount": 33,
+      "lastAccessed": 1779104972877,
+      "keyFiles": [
+        "404.scss",
+        "main.scss",
+        "_base.scss",
+        "_chat.scss",
+        "_chrome-extension-banner.scss"
+      ]
+    },
+    "debian": {
+      "path": "debian",
+      "purpose": null,
+      "fileCount": 31,
+      "lastAccessed": 1779104972897,
+      "keyFiles": [
+        "changelog",
+        "compat",
+        "control",
+        "copyright",
+        "jitsi-meet-prosody.docs"
+      ]
+    },
+    "doc": {
+      "path": "doc",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1779104972898,
+      "keyFiles": [
+        "api.md",
+        "quick-install.md",
+        "README.md"
+      ]
+    },
+    "fonts": {
+      "path": "fonts",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1779104972898,
+      "keyFiles": []
+    },
+    "images": {
+      "path": "images",
+      "purpose": null,
+      "fileCount": 26,
+      "lastAccessed": 1779104972899,
+      "keyFiles": [
+        "app-store-badge.png",
+        "apple-touch-icon.png",
+        "avatar.png",
+        "btn_google_signin_dark_normal.png",
+        "calendar.svg"
+      ]
+    },
+    "ios": {
+      "path": "ios",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1779104972900,
+      "keyFiles": [
+        "apple-app-site-association",
+        "Podfile",
+        "Podfile.lock",
+        "README.md"
+      ]
+    },
+    "lang": {
+      "path": "lang",
+      "purpose": null,
+      "fileCount": 64,
+      "lastAccessed": 1779104972900,
+      "keyFiles": [
+        "languages.json",
+        "main-af.json",
+        "main-ar.json",
+        "main-be.json",
+        "main-bg.json"
+      ]
+    },
+    "metadata": {
+      "path": "metadata",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1779104972901,
+      "keyFiles": []
+    },
+    "modules": {
+      "path": "modules",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1779104972901,
+      "keyFiles": []
+    },
+    "patches": {
+      "path": "patches",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1779104972901,
+      "keyFiles": [
+        "@giphy+js-brand+2.2.2.patch"
+      ]
+    },
+    "react": {
+      "path": "react",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1779104972902,
+      "keyFiles": [
+        "bootstrap.native.js",
+        "index.native.js",
+        "index.web.js"
+      ]
+    },
+    "react-native-sdk": {
+      "path": "react-native-sdk",
+      "purpose": null,
+      "fileCount": 10,
+      "lastAccessed": 1779104972902,
+      "keyFiles": [
+        "index.tsx",
+        "jitsi-meet-rnsdk.podspec",
+        "package.json",
+        "prepare_sdk.js",
+        "README.md"
+      ]
+    },
+    "resources": {
+      "path": "resources",
+      "purpose": null,
+      "fileCount": 12,
+      "lastAccessed": 1779104972902,
+      "keyFiles": [
+        "cloud-api.swagger",
+        "coturn-le-update.sh",
+        "encode-sound.sh",
+        "file-sharing.yaml",
+        "install-letsencrypt-cert.sh"
+      ]
+    },
+    "sounds": {
+      "path": "sounds",
+      "purpose": null,
+      "fileCount": 84,
+      "lastAccessed": 1779104972903,
+      "keyFiles": [
+        "asked-unmute.mp3",
+        "asked-unmute.opus",
+        "e2eeOff.mp3",
+        "e2eeOff.opus",
+        "e2eeOff_fr.mp3"
+      ]
+    },
+    "static": {
+      "path": "static",
+      "purpose": "Static files",
+      "fileCount": 18,
+      "lastAccessed": 1779104972904,
+      "keyFiles": [
+        "404.html",
+        "close.html",
+        "close.js",
+        "close2.html",
+        "close3.html"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 9,
+      "lastAccessed": 1779104972904,
+      "keyFiles": [
+        "env.example",
+        "globals.d.ts",
+        "tsconfig.json",
+        "wdio.conf.ts",
+        "wdio.dev.conf.ts"
+      ]
+    },
+    "twa": {
+      "path": "twa",
+      "purpose": null,
+      "fileCount": 7,
+      "lastAccessed": 1779104972905,
+      "keyFiles": [
+        "build.gradle",
+        "gradle.properties",
+        "gradlew",
+        "gradlew.bat",
+        "settings.gradle"
+      ]
+    },
+    "android\\app": {
+      "path": "android\\app",
+      "purpose": "Application code",
+      "fileCount": 6,
+      "lastAccessed": 1779104972906,
+      "keyFiles": [
+        "build.gradle",
+        "debug.keystore",
+        "proguard-rules-release.pro"
+      ]
+    },
+    "android\\scripts": {
+      "path": "android\\scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 5,
+      "lastAccessed": 1779104972907,
+      "keyFiles": [
+        "check_elf_alignment.sh",
+        "logcat.sh",
+        "release-sdk.sh"
+      ]
+    },
+    "css\\components": {
+      "path": "css\\components",
+      "purpose": "UI components",
+      "fileCount": 1,
+      "lastAccessed": 1779104972907,
+      "keyFiles": [
+        "_input-slider.scss"
+      ]
+    },
+    "doc\\examples": {
+      "path": "doc\\examples",
+      "purpose": "Example code",
+      "fileCount": 1,
+      "lastAccessed": 1779104972908,
+      "keyFiles": [
+        "api.html"
+      ]
+    },
+    "ios\\app": {
+      "path": "ios\\app",
+      "purpose": "Application code",
+      "fileCount": 2,
+      "lastAccessed": 1779104972909,
+      "keyFiles": [
+        "app.entitlements",
+        "PrivacyInfo.xcprivacy"
+      ]
+    },
+    "ios\\scripts": {
+      "path": "ios\\scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 5,
+      "lastAccessed": 1779104972909,
+      "keyFiles": [
+        "fixup-ats.sh",
+        "release-sdk-lite.sh",
+        "release-sdk.sh"
+      ]
+    },
+    "modules\\API": {
+      "path": "modules\\API",
+      "purpose": "API routes",
+      "fileCount": 4,
+      "lastAccessed": 1779104972910,
+      "keyFiles": [
+        "API.js",
+        "constants.js",
+        "index.js"
+      ]
+    },
+    "tests\\helpers": {
+      "path": "tests\\helpers",
+      "purpose": "Helper functions",
+      "fileCount": 12,
+      "lastAccessed": 1779104972912,
+      "keyFiles": [
+        "browserLogger.ts",
+        "expectations.ts",
+        "jaas.ts"
+      ]
+    },
+    "twa\\app": {
+      "path": "twa\\app",
+      "purpose": "Application code",
+      "fileCount": 1,
+      "lastAccessed": 1779104972912,
+      "keyFiles": [
+        "build.gradle"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}
