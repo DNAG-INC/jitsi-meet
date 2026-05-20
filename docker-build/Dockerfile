@@ -1,20 +1,24 @@
 # syntax=docker/dockerfile:1.7
 #
-# AAuti WaveBook Jitsi web — self-contained production image.
-# Built entirely from this branch (custom/10741-whiteboard).
-# No dependency on jitsi/web:* base image.
+# AAuti WaveBook Jitsi web - drop-in replacement for jitsi/web:stable-10741
+# with the custom whiteboard module compiled in from this fork.
+#
+# Layout mirrors upstream jitsi/docker-jitsi-meet/web/. Stage 1 builds the
+# web bundle from this branch's source; Stage 2 is upstream's jitsi/base
+# image with our bundle dropped in where the apt-installed jitsi-meet-web
+# package would have placed it.
 #
 # Build (run from the repo root, NOT from docker-build/):
 #   docker build -f docker-build/Dockerfile -t <acr>.azurecr.io/aauti/jitsi-web:<tag> .
-#
-# Push:
-#   docker push <acr>.azurecr.io/aauti/jitsi-web:<tag>
 
 ############################
-# Stage 1: build web bundles
+# Stage 1: build web bundles from the fork
 ############################
+# Global ARGs - declared before any FROM so they are usable in every FROM line.
 ARG NODE_VERSION=24
-ARG NGINX_VERSION=1.27-alpine
+ARG JITSI_REPO=jitsi
+# Match the stable jitsi-meet release this fork is built on (custom/10741-whiteboard).
+ARG BASE_TAG=stable-10741
 
 FROM node:${NODE_VERSION}-bookworm-slim AS builder
 
@@ -28,79 +32,68 @@ RUN apt-get update \
 
 WORKDIR /src
 
-# Install deps first (better layer caching across source edits)
+# Install deps first for better layer caching across source edits.
 COPY package.json package-lock.json ./
 COPY patches ./patches
-# legacy-peer-deps required for React 18 vs old peer ranges
-# (matches the policy in the repo's .npmrc, which is dockerignored).
 RUN npm ci --no-audit --no-fund --legacy-peer-deps
 
-# Bring the rest of the source and compile
 COPY . .
 RUN make compile && make deploy
 
 ############################
-# Stage 2: nginx runtime
+# Stage 2: jitsi/base runtime (s6-overlay + nginx-extras)
 ############################
-FROM nginx:${NGINX_VERSION} AS runtime
+FROM ${JITSI_REPO}/base:${BASE_TAG}
 
 LABEL org.opencontainers.image.title="aauti-jitsi-web" \
-      org.opencontainers.image.source="https://github.com/DNAG-INC/jitsi-meet" \
-      org.opencontainers.image.description="AAuti WaveBook Jitsi Meet web frontend (custom/10741-whiteboard)"
+      org.opencontainers.image.description="AAuti WaveBook Jitsi Meet web frontend (custom/10741-whiteboard) - drop-in replacement for jitsi/web:stable-10741" \
+      org.opencontainers.image.source="https://github.com/DNAG-INC/jitsi-meet"
 
-# Defaults. Override per-environment from the K8s manifest / pipeline.
-ENV PUBLIC_URL="https://meet.example.com" \
-    HTTP_PORT="80" \
-    XMPP_DOMAIN="meet.jitsi" \
-    XMPP_AUTH_DOMAIN="auth.meet.jitsi" \
-    XMPP_BOSH_URL_BASE="http://prosody:5280" \
-    XMPP_GUEST_DOMAIN="guest.meet.jitsi" \
-    XMPP_MUC_DOMAIN="muc.meet.jitsi" \
-    XMPP_RECORDER_DOMAIN="recorder.meet.jitsi" \
-    XMPP_PORT="5222" \
-    JVB_WS_URL_BASE="http://jvb:9090" \
-    JVB_BREWERY_MUC="jvbbrewery" \
-    ENABLE_AUTH="0" \
-    ENABLE_GUESTS="1" \
-    ENABLE_LOBBY="1" \
-    ENABLE_PREJOIN_PAGE="0" \
-    ENABLE_WELCOME_PAGE="1" \
-    ENABLE_CLOSE_PAGE="0" \
-    ENABLE_TRANSCRIPTIONS="0" \
-    ENABLE_RECORDING="0" \
-    ENABLE_FILE_RECORDING_SERVICE="0" \
-    ENABLE_LIVESTREAMING="0" \
-    ENABLE_WHITEBOARD="1" \
-    APP_NAME="AAuti Meet" \
-    TZ="UTC"
+# acme.sh for Let's Encrypt support (same path as upstream)
+ADD https://raw.githubusercontent.com/acmesh-official/acme.sh/3.0.7/acme.sh /opt
 
-# gettext = envsubst (used by /docker-entrypoint.d/10-config.sh)
-RUN apk add --no-cache gettext bash tzdata \
- && rm -f /etc/nginx/conf.d/default.conf
+# Upstream rootfs overlay: /defaults templates + /etc/cont-init.d + /etc/services.d
+COPY docker-build/rootfs/ /
 
-# Web assets from the builder
-COPY --from=builder /src/libs                /usr/share/jitsi-meet/libs
-COPY --from=builder /src/static              /usr/share/jitsi-meet/static
-COPY --from=builder /src/sounds              /usr/share/jitsi-meet/sounds
-COPY --from=builder /src/fonts               /usr/share/jitsi-meet/fonts
-COPY --from=builder /src/images              /usr/share/jitsi-meet/images
-COPY --from=builder /src/lang                /usr/share/jitsi-meet/lang
-COPY --from=builder /src/css/all.css         /usr/share/jitsi-meet/css/all.css
-COPY --from=builder /src/*.html              /usr/share/jitsi-meet/
-COPY --from=builder /src/pwa-worker.js       /usr/share/jitsi-meet/
-COPY --from=builder /src/manifest.json       /usr/share/jitsi-meet/
-COPY --from=builder /src/interface_config.js /usr/share/jitsi-meet/
-COPY --from=builder /src/resources/robots.txt /usr/share/jitsi-meet/
+# Same package set as upstream jitsi/web, MINUS jitsi-meet-web (we ship our own).
+RUN apt-dpkg-wrap apt-get update \
+ && apt-dpkg-wrap apt-get install -y dnsutils cron nginx-extras socat curl jq \
+ && rm -f /etc/nginx/conf.d/default.conf \
+ && apt-cleanup
 
-# Templates + the single init script. nginx:alpine's built-in entrypoint
-# (/docker-entrypoint.sh) runs anything in /docker-entrypoint.d/*.sh before
-# starting nginx, so no wrapper script is needed.
-COPY docker-build/defaults             /defaults
-COPY docker-build/docker-entrypoint.d  /docker-entrypoint.d
+# Drop the fork's compiled bundle into the same paths the apt package
+# would have populated. /usr/share/jitsi-meet is created by jitsi/base.
+COPY --from=builder /src/libs                  /usr/share/jitsi-meet/libs
+COPY --from=builder /src/static                /usr/share/jitsi-meet/static
+COPY --from=builder /src/sounds                /usr/share/jitsi-meet/sounds
+COPY --from=builder /src/fonts                 /usr/share/jitsi-meet/fonts
+COPY --from=builder /src/images                /usr/share/jitsi-meet/images
+COPY --from=builder /src/lang                  /usr/share/jitsi-meet/lang
+COPY --from=builder /src/css/all.css           /usr/share/jitsi-meet/css/all.css
+COPY --from=builder /src/*.html                /usr/share/jitsi-meet/
+COPY --from=builder /src/pwa-worker.js         /usr/share/jitsi-meet/
+COPY --from=builder /src/manifest.json         /usr/share/jitsi-meet/
+COPY --from=builder /src/interface_config.js   /usr/share/jitsi-meet/
+COPY --from=builder /src/resources/robots.txt  /usr/share/jitsi-meet/
 
-RUN chmod +x /docker-entrypoint.d/*
+# Same dance as upstream: interface_config.js lives in /defaults so the
+# cont-init `tpl` step can env-substitute and copy it into /config.
+RUN mv /usr/share/jitsi-meet/interface_config.js /defaults/
 
-EXPOSE 80
-WORKDIR /usr/share/jitsi-meet
+# Strip any CRLF line endings (Windows git checkouts can introduce them) and
+# normalise file permissions. In s6-overlay v2:
+#   - cont-init.d scripts must NOT be executable (s6 reads them and pipes to
+#     a shell). With +x the kernel-exec path goes through with-contenv ->
+#     s6-exec which fails the PATH lookup of 'bash'.
+#   - services.d/*/run scripts MUST be executable so s6 can supervise them.
+# We force-set perms here because the Windows checkout doesn't preserve them
+# reliably across git clone / cp.
+RUN find /defaults /etc/cont-init.d /etc/services.d -type f -exec sed -i 's/\r$//' {} + \
+ && chmod 644 /etc/cont-init.d/10-config \
+ && chmod 755 /etc/services.d/nginx/run \
+              /etc/services.d/cron/run \
+              /etc/services.d/jaas-account/run
 
-CMD ["nginx", "-g", "daemon off;"]
+EXPOSE 80 443
+
+VOLUME ["/config", "/usr/share/jitsi-meet/transcripts"]
