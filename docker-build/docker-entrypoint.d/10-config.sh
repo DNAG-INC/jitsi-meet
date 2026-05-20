@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Render /defaults templates → real config locations using env vars.
+# Render /defaults templates -> real config locations using env vars.
+# Picked up automatically by nginx:alpine's /docker-entrypoint.sh.
 set -eu
 
 CONFIG_DIR=/config
@@ -8,17 +9,12 @@ NGINX_CONF_D=/etc/nginx/conf.d
 
 mkdir -p "${CONFIG_DIR}" "${NGINX_CONF_D}"
 
-# PUBLIC_HOST = hostname extracted from PUBLIC_URL (no scheme, no path)
 export PUBLIC_HOST="$(echo "${PUBLIC_URL}" | sed -E 's#^https?://##; s#/.*$##')"
 export APP_NAME="${APP_NAME:-AAuti Meet}"
 
-# DNS resolver for nginx's lazy upstream resolution.
-# Read first nameserver from /etc/resolv.conf; works in Docker
-# (127.0.0.11) and in Kubernetes (cluster DNS, e.g. 10.96.0.10).
 DNS_RESOLVER="$(awk '/^nameserver / {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)"
 export DNS_RESOLVER="${DNS_RESOLVER:-127.0.0.11}"
 
-# Boolean normalisation → JS literals for config.js
 _bool() { case "${1:-0}" in 1|true|TRUE|yes|YES) echo true ;; *) echo false ;; esac; }
 export ENABLE_WELCOME_PAGE_BOOL="$(_bool "${ENABLE_WELCOME_PAGE}")"
 export ENABLE_CLOSE_PAGE_BOOL="$(_bool "${ENABLE_CLOSE_PAGE}")"
@@ -29,11 +25,8 @@ export ENABLE_FILE_RECORDING_SERVICE_BOOL="$(_bool "${ENABLE_FILE_RECORDING_SERV
 export ENABLE_LIVESTREAMING_BOOL="$(_bool "${ENABLE_LIVESTREAMING}")"
 export ENABLE_WHITEBOARD_BOOL="$(_bool "${ENABLE_WHITEBOARD}")"
 
-# Literal "$" passthrough so nginx variables in the template survive envsubst.
 export DOLLAR='$'
 
-# Variables we want envsubst to replace. Everything else (nginx $vars,
-# regex captures, etc.) is left intact.
 TEMPLATE_VARS='${PUBLIC_URL} ${PUBLIC_HOST} ${APP_NAME} ${HTTP_PORT} ${DOLLAR}
 ${DNS_RESOLVER}
 ${XMPP_DOMAIN} ${XMPP_AUTH_DOMAIN} ${XMPP_GUEST_DOMAIN} ${XMPP_MUC_DOMAIN}
@@ -60,5 +53,4 @@ render "${DEFAULTS_DIR}/meet.conf"             "${NGINX_CONF_D}/default.conf"
 render "${DEFAULTS_DIR}/config.js"             "${CONFIG_DIR}/config.js"
 render "${DEFAULTS_DIR}/interface_config.js"   "${CONFIG_DIR}/interface_config.js"
 
-# Validate the rendered nginx config; fail fast if it's broken.
 nginx -t

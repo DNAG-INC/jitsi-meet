@@ -74,8 +74,8 @@ ENV PUBLIC_URL="https://meet.example.com" \
     APP_NAME="AAuti Meet" \
     TZ="UTC"
 
-# gettext = envsubst, tini = clean PID-1 signal handling
-RUN apk add --no-cache gettext tini bash tzdata \
+# gettext = envsubst (used by /docker-entrypoint.d/10-config.sh)
+RUN apk add --no-cache gettext bash tzdata \
  && rm -f /etc/nginx/conf.d/default.conf
 
 # Web assets from the builder
@@ -92,15 +92,15 @@ COPY --from=builder /src/manifest.json       /usr/share/jitsi-meet/
 COPY --from=builder /src/interface_config.js /usr/share/jitsi-meet/
 COPY --from=builder /src/resources/robots.txt /usr/share/jitsi-meet/
 
-# Overlay templates, init scripts, and entrypoint from docker-build/
-COPY docker-build/defaults                   /defaults
-COPY docker-build/etc                        /etc
-# COPY docker-build/docker-entrypoint-jitsi.sh /docker-entrypoint-jitsi.sh
+# Templates + the single init script. nginx:alpine's built-in entrypoint
+# (/docker-entrypoint.sh) runs anything in /docker-entrypoint.d/*.sh before
+# starting nginx, so no wrapper script is needed.
+COPY docker-build/defaults             /defaults
+COPY docker-build/docker-entrypoint.d  /docker-entrypoint.d
 
-# RUN chmod +x /docker-entrypoint-jitsi.sh /etc/cont-init.d/*
+RUN chmod +x /docker-entrypoint.d/*
 
 EXPOSE 80
 WORKDIR /usr/share/jitsi-meet
 
-ENTRYPOINT ["/sbin/tini", "--", "/docker-entrypoint-jitsi.sh"]
 CMD ["nginx", "-g", "daemon off;"]
