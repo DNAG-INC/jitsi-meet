@@ -183,7 +183,7 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                 </div>
                             )
                             : isLocalModerator
-                                ? <WhiteboardPicker />
+                                ? <WhiteboardPicker onSelect = { () => setForcePicker(false) } />
                                 : (
                                     <div
                                         style = {{

@@ -5,6 +5,7 @@ import { getCurrentConference } from '../base/conference/functions';
 import { hideDialog, openDialog } from '../base/dialog/actions';
 import { isDialogOpen } from '../base/dialog/functions';
 import { participantJoined, participantLeft, pinParticipant } from '../base/participants/actions';
+import { isLocalParticipantModerator } from '../base/participants/functions';
 import { FakeParticipant } from '../base/participants/types';
 import MiddlewareRegistry from '../base/redux/MiddlewareRegistry';
 import { addStageParticipant } from '../filmstrip/actions.web';
@@ -101,6 +102,15 @@ MiddlewareRegistry.register((store: IStore) => (next: Function) => (action: AnyA
             raiseWhiteboardNotification(WhiteboardStatus.SHOWN);
 
             return next(action);
+        }
+
+        // Broadcast the close to every participant. Without this, remote
+        // clients keep rendering the iframe because their conference metadata
+        // still holds the previously selected board. Gated on moderator +
+        // existing roomId so the re-dispatch coming back from the metadata
+        // listener (after resetWhiteboard clears state) doesn't re-broadcast.
+        if (existingCollabDetails?.roomId && isLocalParticipantModerator(state)) {
+            conference?.getMetadataHandler().setMetadata(WHITEBOARD_ID, { closed: true });
         }
 
         dispatch(participantLeft(WHITEBOARD_ID, conference, { fakeParticipant: FakeParticipant.Whiteboard }));

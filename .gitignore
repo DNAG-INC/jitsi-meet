@@ -118,3 +118,8 @@ react-native-sdk/sounds
 tests/.env
 test-results
 
+# AAuti local dev artifacts
+build.log
+build-css.log
+static/local-test/
+

@@ -30,7 +30,17 @@ const cardStyle: React.CSSProperties = {
     overflow: 'hidden'
 };
 
-const WhiteboardPicker = () => {
+interface IProps {
+    /**
+     * Fires after a board is picked or created. Used by the parent to clear
+     * any local "show picker" override (e.g. the back-button forcePicker
+     * state in Whiteboard.tsx) so re-selecting the SAME board still flips
+     * the view back to the iframe.
+     */
+    onSelect?: () => void;
+}
+
+const WhiteboardPicker = ({ onSelect }: IProps) => {
     const dispatch = useDispatch();
     const whiteboardConfig = useSelector(
         (state: IReduxState) => state['features/base/config'].whiteboard || {}
@@ -105,8 +115,12 @@ const WhiteboardPicker = () => {
 
         if (boardId) {
             dispatch(selectWhiteboardBoard(boardId) as any);
+            // Tell parent the picker is done. Required so re-selecting the
+            // same board after a back-button press still hides the picker —
+            // otherwise the parent's [boardId] effect can't detect a change.
+            onSelect?.();
         }
-    }, [ dispatch ]);
+    }, [ dispatch, onSelect ]);
 
     const handleCreate = useCallback(async () => {
         const title = newBoardName.trim();
@@ -174,6 +188,7 @@ const WhiteboardPicker = () => {
 
             if (boardId) {
                 dispatch(selectWhiteboardBoard(boardId) as any);
+                onSelect?.();
             } else {
                 setErrorMsg(json?.error || json?.message || 'Failed to create board');
             }
@@ -182,7 +197,7 @@ const WhiteboardPicker = () => {
         } finally {
             setSubmitting(false);
         }
-    }, [ newBoardName, apiUrl, sessionId, category, subCategory, instituteId, userId, userName, members, headers, dispatch ]);
+    }, [ newBoardName, apiUrl, sessionId, category, subCategory, instituteId, userId, userName, members, headers, dispatch, onSelect ]);
 
     return (
         <div
