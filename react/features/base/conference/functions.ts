@@ -97,13 +97,6 @@ export function commonUserJoinedHandling(
         // the identity and avatar come from jwt and never change in the presence
         dispatch(participantJoined({
             avatarURL: user.getIdentity()?.user?.avatar,
-
-            // The remote participant's JWT user id (AAuti user id, stable across
-            // sessions), broadcast in their presence stanza. Distinct from `id`
-            // which is the JID resource Prosody assigns. Needed so the WaveBook
-            // whiteboard sync can key participants by their canonical AAuti
-            // user id (the value WaveBook's embed gate also receives).
-            jwtId: user.getIdentity()?.user?.id,
             botType: user.getBotType(),
             conference,
             id,

@@ -142,12 +142,6 @@ export interface INoiseSuppressionConfig {
 }
 
 export interface IWhiteboardConfig {
-
-    // AAuti fork: base URL of the AAuti Node backend (e.g. https://api.aauti.com).
-    // Used by the whiteboard feature to fetch the canonical session roster
-    // from /session/getWhiteboardMembers and sync it into the WaveBook board's
-    // users[] when a moderator picks a board or a new participant joins.
-    aautiApiUrl?: string;
     apiKey?: string;
     apiUrl?: string;
     collabServerBaseUrl?: string;
