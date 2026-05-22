@@ -266,5 +266,6 @@ export default [
     // visible in AAuti's bundle today, so this is no extra exposure).
     'whiteboard.apiKey',
     'whiteboard.apiUrl',
+    'whiteboard.aautiApiUrl',
     'whiteboard.collabServerBaseUrl'
 ].concat(extraConfigWhitelist).concat(isEmbedded() ? isEmbeddedConfigWhitelist : []);

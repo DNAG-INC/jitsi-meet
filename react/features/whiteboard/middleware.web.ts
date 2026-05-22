@@ -4,6 +4,7 @@ import { IStore } from '../app/types';
 import { getCurrentConference } from '../base/conference/functions';
 import { hideDialog, openDialog } from '../base/dialog/actions';
 import { isDialogOpen } from '../base/dialog/functions';
+import { PARTICIPANT_JOINED, PARTICIPANT_ROLE_CHANGED } from '../base/participants/actionTypes';
 import { participantJoined, participantLeft, pinParticipant } from '../base/participants/actions';
 import { isLocalParticipantModerator } from '../base/participants/functions';
 import { FakeParticipant } from '../base/participants/types';
@@ -15,7 +16,8 @@ import { RESET_WHITEBOARD, SET_WHITEBOARD_OPEN } from './actionTypes';
 import {
     notifyWhiteboardLimit,
     restrictWhiteboard,
-    setupWhiteboard
+    setupWhiteboard,
+    syncWhiteboardRoster
 } from './actions';
 import WhiteboardLimitDialog from './components/web/WhiteboardLimitDialog';
 import { WHITEBOARD_ID, WHITEBOARD_PARTICIPANT_NAME } from './constants';
@@ -122,6 +124,24 @@ MiddlewareRegistry.register((store: IStore) => (next: Function) => (action: AnyA
         dispatch(participantLeft(WHITEBOARD_ID, conference, { fakeParticipant: FakeParticipant.Whiteboard }));
         raiseWhiteboardNotification(WhiteboardStatus.RESET);
 
+        break;
+    }
+    case PARTICIPANT_JOINED:
+    case PARTICIPANT_ROLE_CHANGED: {
+        // Whenever the participant roster changes while a board is open,
+        // schedule a debounced roster sync. The dispatch is a cheap no-op
+        // when no board is open or local isn't a moderator — guard logic
+        // lives inside the action so this middleware stays lightweight.
+        const joinedParticipant = action.participant;
+
+        if (joinedParticipant?.fakeParticipant === FakeParticipant.Whiteboard) {
+            // The fake whiteboard participant itself triggers PARTICIPANT_JOINED.
+            // Don't echo a sync for it — it has no AAuti userId and adds nothing.
+            break;
+        }
+        if (getCollabDetails(state)?.roomId && isLocalParticipantModerator(state)) {
+            dispatch(syncWhiteboardRoster());
+        }
         break;
     }
     }
