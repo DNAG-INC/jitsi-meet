@@ -244,12 +244,12 @@ const _throttledNotifyParticipantConnected = throttle((dispatch: IStore['dispatc
 
     if (notificationProps) {
         dispatch(
-            showNotification(notificationProps, NOTIFICATION_TIMEOUT_TYPE.SHORT));
+            showNotification(notificationProps, NOTIFICATION_TIMEOUT_TYPE.MEDIUM));
     }
 
     joinedParticipantsNames = [];
 
-}, 2000, { leading: false });
+}, 2000, { leading: true, trailing: true });
 
 /**
  * An array of names of participants that have left the conference. The array
@@ -308,12 +308,12 @@ const _throttledNotifyParticipantLeft = throttle((dispatch: IStore['dispatch'], 
 
     if (notificationProps) {
         dispatch(
-            showNotification(notificationProps, NOTIFICATION_TIMEOUT_TYPE.SHORT));
+            showNotification(notificationProps, NOTIFICATION_TIMEOUT_TYPE.MEDIUM));
     }
 
     leftParticipantsNames = [];
 
-}, 2000, { leading: false });
+}, 2000, { leading: true, trailing: true });
 
 /**
  * Queues the display of a notification of a participant having connected to
