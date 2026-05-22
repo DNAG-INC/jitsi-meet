@@ -2,6 +2,7 @@ import { createRestrictWhiteboardEvent } from '../analytics/AnalyticsEvents';
 import { sendAnalytics } from '../analytics/functions';
 import { IStore } from '../app/types';
 import { getCurrentConference } from '../base/conference/functions';
+import { isLocalParticipantModerator } from '../base/participants/functions';
 
 import { resetWhiteboard, setWhiteboardOpen, setupWhiteboard } from './actions.any';
 import { WHITEBOARD_ID } from './constants';
@@ -36,8 +37,15 @@ export function toggleWhiteboard() {
 }
 
 /**
- * Sets the WaveBook board the participants should join, then broadcasts it via
- * the conference metadata so other participants pick it up automatically.
+ * Sets the WaveBook board the local participant should join.
+ *
+ * Moderator: also broadcasts the choice via conference metadata so every
+ * other participant snaps to the same board.
+ *
+ * Non-moderator: only updates local state. They can pick a different board
+ * from the picker for their own view without affecting anyone else. If the
+ * moderator later picks another board, the [boardId] effect in
+ * Whiteboard.tsx snaps the non-moderator back to that board.
  *
  * @param {string} boardId - The WaveBook board id to use as the conference whiteboard.
  * @returns {Function}
@@ -53,7 +61,9 @@ export function selectWhiteboardBoard(boardId: string) {
         };
 
         dispatch(setupWhiteboard(collabData));
-        conference?.getMetadataHandler().setMetadata(WHITEBOARD_ID, collabData);
+        if (isLocalParticipantModerator(state)) {
+            conference?.getMetadataHandler().setMetadata(WHITEBOARD_ID, collabData);
+        }
     };
 }
 

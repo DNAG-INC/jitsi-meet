@@ -106,10 +106,12 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
         };
     };
 
-    // Non-moderators never see the picker — only moderators can force back to
-    // the picker view. Without a board selected yet, non-mods see a waiting
-    // state (rare: moderator hasn't picked since opening).
-    const showIframe = !(forcePicker && isLocalModerator) && Boolean(collabServerBaseUrl) && Boolean(boardId);
+    // Both moderators and non-moderators can navigate between picker and
+    // iframe via the back button. Non-moderators picking a different board
+    // only affects their local view (no metadata broadcast). If the moderator
+    // later picks another board, the [boardId] effect above snaps everyone
+    // back to that board.
+    const showIframe = !forcePicker && Boolean(collabServerBaseUrl) && Boolean(boardId);
     const embedUrl = showIframe
         ? `${collabServerBaseUrl!.replace(/\/$/, '')}/embed/${boardId}`
             + `?userId=${encodeURIComponent(userId)}`
@@ -151,23 +153,21 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                             borderBottom: '1px solid #3f3f46',
                                             flex: '0 0 auto'
                                         }}>
-                                        { isLocalModerator && (
-                                            <button
-                                                aria-label = 'Back to whiteboard list'
-                                                onClick = { () => setForcePicker(true) }
-                                                style = {{
-                                                    background: 'transparent',
-                                                    color: '#3083EF',
-                                                    border: 'none',
-                                                    cursor: 'pointer',
-                                                    fontSize: 18,
-                                                    padding: '4px 8px',
-                                                    lineHeight: 1,
-                                                    fontWeight: 600
-                                                }}>
-                                                ←
-                                            </button>
-                                        )}
+                                        <button
+                                            aria-label = 'Back to whiteboard list'
+                                            onClick = { () => setForcePicker(true) }
+                                            style = {{
+                                                background: 'transparent',
+                                                color: '#3083EF',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                fontSize: 18,
+                                                padding: '4px 8px',
+                                                lineHeight: 1,
+                                                fontWeight: 600
+                                            }}>
+                                            ←
+                                        </button>
                                         <div style = {{ fontWeight: 600 }}>Whiteboard</div>
                                     </div>
                                     <iframe
@@ -182,23 +182,11 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                         title = 'Whiteboard' />
                                 </div>
                             )
-                            : isLocalModerator
-                                ? <WhiteboardPicker onSelect = { () => setForcePicker(false) } />
-                                : (
-                                    <div
-                                        style = {{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            height: '100%',
-                                            width: '100%',
-                                            color: '#a1a1aa',
-                                            background: '#18181b',
-                                            fontSize: 14
-                                        }}>
-                                        Waiting for the host to open a whiteboard…
-                                    </div>
-                                )
+                            : (
+                                <WhiteboardPicker
+                                    canCreate = { isLocalModerator }
+                                    onSelect = { () => setForcePicker(false) } />
+                            )
                         }
                     </div>
                 )

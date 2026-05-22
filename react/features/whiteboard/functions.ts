@@ -6,7 +6,7 @@ import { getParticipantCount, getPinnedParticipant } from '../../features/base/p
 import { IReduxState } from '../app/types';
 import { getCurrentConference } from '../base/conference/functions';
 import { IWhiteboardConfig } from '../base/config/configType';
-import { getRemoteParticipants, isLocalParticipantModerator } from '../base/participants/functions';
+import { getRemoteParticipants } from '../base/participants/functions';
 import { encodeToBase64URL } from '../base/util/httpUtils';
 import { appendURLHashParam, appendURLParam, getBackendSafePath } from '../base/util/uri';
 import { getCurrentRoomId, isInBreakoutRoom } from '../breakout-rooms/functions';
@@ -125,16 +125,19 @@ export const isWhiteboardEnabled = (state: IReduxState): boolean =>
 export const isWhiteboardOpen = (state: IReduxState): boolean => getWhiteboardState(state).isOpen;
 
 /**
- * Indicates whether the whiteboard button is visible.
- * AAuti policy: only moderators can show/hide the whiteboard. Non-moderators
- * never see the button; they receive the whiteboard panel automatically
- * (via the metadata broadcast) once a moderator opens one.
+ * Indicates whether the whiteboard show/hide button is visible.
+ *
+ * AAuti policy: every participant can toggle their own whiteboard panel.
+ * Non-moderators see the picker and existing boards but no "Add Whiteboard"
+ * card (gated in WhiteboardPicker via the canCreate prop). Only the
+ * moderator's pick broadcasts via conference metadata; non-mod picks are
+ * local-only.
  *
  * @param {IReduxState} state - The state from the Redux store.
  * @returns {boolean}
  */
 export const isWhiteboardButtonVisible = (state: IReduxState): boolean =>
-    isWhiteboardEnabled(state) && isLocalParticipantModerator(state);
+    isWhiteboardEnabled(state);
 
 /**
  * Indicates whether the whiteboard is present as a meeting participant.
@@ -187,13 +190,17 @@ export const isWhiteboardVisible = (state: IReduxState): boolean =>
     || state['features/large-video'].participantId === WHITEBOARD_ID;
 
 /**
-* Indicates whether the whiteboard is accessible to a participant that has a moderator role.
-*
-* @param {IReduxState} state - The state from the Redux store.
-* @returns {boolean}
-*/
+ * Indicates whether the local participant can toggle the whiteboard.
+ *
+ * AAuti policy: any participant can open/hide their own whiteboard panel.
+ * Moderator-only actions (board pick broadcast, broadcast-to-all hide) are
+ * gated separately at their call sites.
+ *
+ * @param {IReduxState} state - The state from the Redux store.
+ * @returns {boolean}
+ */
 export const isWhiteboardAllowed = (state: IReduxState): boolean =>
-    isWhiteboardEnabled(state) && isLocalParticipantModerator(state);
+    isWhiteboardEnabled(state);
 
 /**
  * Whether to enforce the whiteboard user limit.
