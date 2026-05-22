@@ -31,14 +31,6 @@ const cardStyle: React.CSSProperties = {
 };
 
 interface IProps {
-
-    /**
-     * Whether the local participant can create new boards. True for
-     * moderators only — non-moderators see the existing-boards grid but
-     * not the "Add Whiteboard" card or the create modal.
-     */
-    canCreate?: boolean;
-
     /**
      * Fires after a board is picked or created. Used by the parent to clear
      * any local "show picker" override (e.g. the back-button forcePicker
@@ -48,7 +40,7 @@ interface IProps {
     onSelect?: () => void;
 }
 
-const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
+const WhiteboardPicker = ({ onSelect }: IProps) => {
     const dispatch = useDispatch();
     const whiteboardConfig = useSelector(
         (state: IReduxState) => state['features/base/config'].whiteboard || {}
@@ -245,21 +237,19 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                     gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
                     gap: 16
                 }}>
-                { canCreate && (
-                    <div
-                        onClick = { () => setCreating(true) }
-                        style = {{
-                            ...cardStyle,
-                            borderStyle: 'dashed',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            textAlign: 'center'
-                        }}>
-                        <div style = {{ fontSize: 28, lineHeight: 1 }}>+</div>
-                        <div style = {{ marginTop: 8 }}>Add Whiteboard</div>
-                        <div style = {{ color: '#a1a1aa', fontSize: 12, marginTop: 4 }}>Create new whiteboard</div>
-                    </div>
-                )}
+                <div
+                    onClick = { () => setCreating(true) }
+                    style = {{
+                        ...cardStyle,
+                        borderStyle: 'dashed',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center'
+                    }}>
+                    <div style = {{ fontSize: 28, lineHeight: 1 }}>+</div>
+                    <div style = {{ marginTop: 8 }}>Add Whiteboard</div>
+                    <div style = {{ color: '#a1a1aa', fontSize: 12, marginTop: 4 }}>Create new whiteboard</div>
+                </div>
 
                 { boards.map(b => (
                     <div
@@ -280,7 +270,7 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                 ))}
             </div>
 
-            { creating && canCreate && (
+            { creating && (
                 <div
                     style = {{
                         position: 'fixed',
