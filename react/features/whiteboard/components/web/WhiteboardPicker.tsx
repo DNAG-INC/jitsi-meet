@@ -2,9 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { IReduxState } from '../../../app/types';
-import { getLocalParticipant } from '../../../base/participants/functions';
+import { getLocalParticipant, getRemoteParticipants } from '../../../base/participants/functions';
+import { IParticipant } from '../../../base/participants/types';
 import { selectWhiteboardBoard } from '../../actions.web';
-import { getWaveBookJwtContext } from '../../functions';
+import { IWaveBookMember, getWaveBookJwtContext } from '../../functions';
 
 interface IBoard {
     _id?: string;
@@ -55,6 +56,11 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
     );
     const localParticipant = useSelector(getLocalParticipant);
     const jwtCtx = useSelector(getWaveBookJwtContext);
+    // Live Jitsi participants currently in the conference. Used at board
+    // create time so the seeded users[] reflects everyone in the AV call
+    // right now, not just the JWT-frozen members list which is captured
+    // at JWT-mint time and misses anyone who joined the call afterwards.
+    const remoteParticipants = useSelector(getRemoteParticipants);
 
     const apiUrl = whiteboardConfig.apiUrl;
     const apiKey = whiteboardConfig.apiKey;
@@ -144,32 +150,57 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
         setSubmitting(true);
         setErrorMsg(null);
         try {
-            // Mirror useWaveBookSession.handleWbCreateSubmit payload exactly:
-            //   { title, description, users: [{ owner }], metadata: { type,
-            //     sessionId, scheduleId, category, subCategory, instituteId } }
-            // We seed users with just the creator-as-owner; richer member sync
-            // (instructors=editor, subscribers=viewer) needs classDetails which
-            // Jitsi doesn't have. That can be filled in later via update or
-            // pre-provisioned on the AAuti side.
-            // Match useWaveBookSession.handleWbCreateSubmit:
-            //   users = [owner, ...moderators-as-editors, ...members-as-viewers]
-            // Members already de-duped server-side (jwt.context.metadata.members
-            // excludes the requester so prepending them as 'owner' here doesn't
-            // duplicate). See aautiUtil.js → generateJwtTokenForJitsi.
+            // Seed users[] from three sources, deduped by userId:
+            //   1. The creator as 'owner'.
+            //   2. jwt.context.metadata.members — the ChatRoom roster
+            //      snapshot from when the creator's JWT was minted
+            //      (moderators -> editor, members -> viewer).
+            //   3. Every other Jitsi participant currently in the AV call,
+            //      mapped via their broadcast jwtId (AAuti user id) to
+            //      'editor' for moderators / 'viewer' otherwise.
+            // (3) is the critical addition: without it, anyone who joined
+            // the call after the creator's JWT was minted (late purchases,
+            // guests via /joinByToken, etc.) wouldn't appear in board.users[]
+            // until they themselves opened the iframe and tripped the
+            // embed-gate auto-add — so the moderator's Members panel would
+            // sit at "2 of 11 in the call".
             const users: Array<{ userId: string; name: string; role: string; }> = [];
+            const seen = new Set<string>();
 
             if (userId) {
                 users.push({ userId, name: userName, role: 'owner' });
+                seen.add(userId);
             }
-            members
-                .filter(m => m.userId && m.userId !== userId)
-                .forEach(m => {
-                    users.push({
-                        userId: m.userId,
-                        name: m.name || '',
-                        role: m.role
-                    });
+
+            members.forEach((m: IWaveBookMember) => {
+                if (!m.userId || seen.has(m.userId)) {
+                    return;
+                }
+                seen.add(m.userId);
+                users.push({
+                    userId: m.userId,
+                    name: m.name || '',
+                    role: m.role
                 });
+            });
+
+            remoteParticipants.forEach((p: IParticipant) => {
+                // Skip the whiteboard fake-participant and anyone we
+                // already added from sources 1/2.
+                if (p.fakeParticipant) {
+                    return;
+                }
+                const externalId = p.jwtId;
+                if (!externalId || seen.has(externalId)) {
+                    return;
+                }
+                seen.add(externalId);
+                users.push({
+                    userId: externalId,
+                    name: p.name || '',
+                    role: p.role === 'moderator' ? 'editor' : 'viewer'
+                });
+            });
 
             const body: Record<string, any> = {
                 title,
@@ -205,7 +236,7 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
         } finally {
             setSubmitting(false);
         }
-    }, [ newBoardName, apiUrl, sessionId, category, subCategory, instituteId, userId, userName, members, headers, dispatch, onSelect ]);
+    }, [ newBoardName, apiUrl, sessionId, category, subCategory, instituteId, userId, userName, members, remoteParticipants, headers, dispatch, onSelect ]);
 
     return (
         <div
