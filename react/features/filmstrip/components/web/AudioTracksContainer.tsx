@@ -1,10 +1,11 @@
 import React, { useEffect } from 'react';
-import { connect } from 'react-redux';
+import { connect, useDispatch } from 'react-redux';
 
 import { IReduxState } from '../../../app/types';
 import AudioTrack from '../../../base/media/components/web/AudioTrack';
 import { MEDIA_TYPE } from '../../../base/media/constants';
 import { ITrack } from '../../../base/tracks/types';
+import { close as closeParticipantsPane } from '../../../participants-pane/actions.any';
 
 /**
  * The type of the React {@code Component} props of {@link AudioTracksContainer}.
@@ -39,8 +40,17 @@ interface IProps {
  * enter/leave) and once when the relevant Redux state changes. Cheap and safe:
  * if an element is already playing, `.play()` is a no-op; if autoplay is
  * blocked the `.catch()` swallows the rejection.
+ *
+ * Additionally, when the AAuti marketplace signals a PIP transition the
+ * participants pane is force-closed. On iPad Safari the combination of an
+ * open pane + iframe resize silently severs the MediaStream binding on remote
+ * audio elements (the element is not paused, but no sound plays), and that
+ * state is unrecoverable from inside the iframe. Closing the pane before the
+ * transition completes sidesteps the reflow that breaks the binding.
  */
 function useForcePlayRemoteAudio(deps: readonly unknown[]) {
+    const dispatch = useDispatch();
+
     useEffect(() => {
         const forcePlay = () => {
             const audios = document.querySelectorAll<HTMLAudioElement>(
@@ -66,8 +76,15 @@ function useForcePlayRemoteAudio(deps: readonly unknown[]) {
         // browser PiP events do NOT fire for that path. The parent posts a
         // message on every PIP-class transition so we can recover audio that
         // the browser may have paused due to the iframe resize.
+        //
+        // Force the participants pane closed first: on iPad Safari, having
+        // the pane open during the iframe resize silently detaches the
+        // MediaStream from remote audio elements and the only reliable
+        // recovery is to never enter that state. forcePlay still runs as a
+        // belt-and-braces nudge for browsers that just pause.
         const onParentMessage = (e: MessageEvent) => {
             if (e.data?.source === 'aauti-marketplace' && e.data?.type === 'pip-mode-changed') {
+                dispatch(closeParticipantsPane());
                 forcePlay();
             }
         };
