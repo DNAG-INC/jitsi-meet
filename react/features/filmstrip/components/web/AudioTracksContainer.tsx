@@ -61,6 +61,19 @@ function useForcePlayRemoteAudio(deps: readonly unknown[]) {
         document.addEventListener('visibilitychange', forcePlay);
         window.addEventListener('focus', forcePlay);
 
+        // External trigger from the AAuti marketplace parent. The marketplace
+        // toggles its own "mini PIP" via a CSS class on the iframe container;
+        // browser PiP events do NOT fire for that path. The parent posts a
+        // message on every PIP-class transition so we can recover audio that
+        // the browser may have paused due to the iframe resize.
+        const onParentMessage = (e: MessageEvent) => {
+            if (e.data?.source === 'aauti-marketplace' && e.data?.type === 'pip-mode-changed') {
+                forcePlay();
+            }
+        };
+
+        window.addEventListener('message', onParentMessage);
+
         const pipVideo = document.getElementById('pipVideo') as HTMLVideoElement | null;
 
         pipVideo?.addEventListener('enterpictureinpicture', forcePlay);
@@ -70,6 +83,7 @@ function useForcePlayRemoteAudio(deps: readonly unknown[]) {
             document.removeEventListener('fullscreenchange', forcePlay);
             document.removeEventListener('visibilitychange', forcePlay);
             window.removeEventListener('focus', forcePlay);
+            window.removeEventListener('message', onParentMessage);
             pipVideo?.removeEventListener('enterpictureinpicture', forcePlay);
             pipVideo?.removeEventListener('leavepictureinpicture', forcePlay);
         };
