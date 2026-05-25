@@ -61,6 +61,7 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
     const apiKey = whiteboard?.apiKey;
     const boardId = collabDetails?.roomId;
     const userId = jwtCtx?.userId || localParticipantId;
+    const userAvatar = localParticipant?.avatarURL || '';
 
     // Local "show picker" override so the moderator can navigate back to the
     // board list without affecting other participants. Cleared whenever a new
@@ -116,6 +117,11 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
         ? `${collabServerBaseUrl!.replace(/\/$/, '')}/embed/${boardId}`
             + `?userId=${encodeURIComponent(userId)}`
             + `&userName=${encodeURIComponent(localParticipantName || '')}`
+            // Forwarded to WaveBook as the x-user-avatar header on the
+            // embed-gate request. Lets the User record get populated with
+            // the AAuti profile picture on first-time access so the
+            // Members panel shows real images, not just initials.
+            + (userAvatar ? `&avatar=${encodeURIComponent(userAvatar)}` : '')
             + (apiKey ? `&apiKey=${encodeURIComponent(apiKey)}` : '')
         : '';
 

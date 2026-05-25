@@ -164,11 +164,21 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
             // until they themselves opened the iframe and tripped the
             // embed-gate auto-add — so the moderator's Members panel would
             // sit at "2 of 11 in the call".
-            const users: Array<{ userId: string; name: string; role: string; }> = [];
+            // Forward each user's AAuti avatar URL where available so
+            // WaveBook's User record gets populated with a real image at
+            // create time. Without this the Members panel renders only
+            // the colored-initials badge — the user.avatar field stays
+            // empty until something else updates it.
+            const users: Array<{ userId: string; name: string; role: string; avatar?: string; }> = [];
             const seen = new Set<string>();
 
             if (userId) {
-                users.push({ userId, name: userName, role: 'owner' });
+                users.push({
+                    userId,
+                    name: userName,
+                    role: 'owner',
+                    avatar: localParticipant?.avatarURL
+                });
                 seen.add(userId);
             }
 
@@ -180,7 +190,8 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                 users.push({
                     userId: m.userId,
                     name: m.name || '',
-                    role: m.role
+                    role: m.role,
+                    avatar: m.avatar
                 });
             });
 
@@ -198,7 +209,8 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                 users.push({
                     userId: externalId,
                     name: p.name || '',
-                    role: p.role === 'moderator' ? 'editor' : 'viewer'
+                    role: p.role === 'moderator' ? 'editor' : 'viewer',
+                    avatar: p.avatarURL
                 });
             });
 

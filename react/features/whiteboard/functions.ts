@@ -29,6 +29,13 @@ import { IWhiteboardState } from './reducer';
  * config.whiteboard.testXxx values for local dev.
  */
 export interface IWaveBookMember {
+
+    /**
+     * AAuti profile image URL, populated by the backend's JWT mint
+     * (generateJwtTokenForJitsi). Forwarded into the WaveBook board
+     * create payload so the Members panel shows real photos.
+     */
+    avatar?: string;
     name: string;
     role: 'editor' | 'viewer';
     userId: string;
