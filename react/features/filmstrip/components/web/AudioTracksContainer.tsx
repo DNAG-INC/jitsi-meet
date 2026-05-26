@@ -1,11 +1,10 @@
 import React, { useEffect } from 'react';
-import { connect, useDispatch } from 'react-redux';
+import { connect } from 'react-redux';
 
 import { IReduxState } from '../../../app/types';
 import AudioTrack from '../../../base/media/components/web/AudioTrack';
 import { MEDIA_TYPE } from '../../../base/media/constants';
 import { ITrack } from '../../../base/tracks/types';
-import { close as closeParticipantsPane } from '../../../participants-pane/actions.any';
 
 /**
  * The type of the React {@code Component} props of {@link AudioTracksContainer}.
@@ -29,6 +28,27 @@ interface IProps {
 }
 
 /**
+ * iOS WebKit (iPad and iPhone, including iPadOS 13+ which UA-spoofs as
+ * Mac Safari) silently severs the MediaStream binding from a remote
+ * <audio> element when the iframe is resized — e.g. the AAuti marketplace
+ * toggling its mini-PIP container. The element does NOT pause: a.paused
+ * stays false, so a plain .play() call is a no-op and the user just
+ * hears nothing. Reassigning srcObject (save → null → restore) forces
+ * WebKit to rebind the underlying stream. Safe on non-iOS browsers
+ * (treated as a benign rebind) but only worth running where the
+ * detachment actually happens, so we gate on a UA check.
+ */
+function isIOSWebKit(): boolean {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+
+    if (/iPad|iPhone|iPod/.test(ua)) return true;
+
+    // iPadOS 13+ reports as Mac in the UA string; distinguish via touch.
+    return /Mac/.test(navigator.platform || '') && (navigator.maxTouchPoints || 0) > 1;
+}
+
+/**
  * Defensive: some browsers silently pause remote `<audio>` elements when the
  * window is backgrounded (PiP active) and a layout reflow happens around the
  * same time — e.g. the user opens the participants pane while PiP is active.
@@ -41,24 +61,32 @@ interface IProps {
  * if an element is already playing, `.play()` is a no-op; if autoplay is
  * blocked the `.catch()` swallows the rejection.
  *
- * Additionally, when the AAuti marketplace signals a PIP transition the
- * participants pane is force-closed. On iPad Safari the combination of an
- * open pane + iframe resize silently severs the MediaStream binding on remote
- * audio elements (the element is not paused, but no sound plays), and that
- * state is unrecoverable from inside the iframe. Closing the pane before the
- * transition completes sidesteps the reflow that breaks the binding.
+ * On iOS WebKit, additionally rebind srcObject because the stream binding
+ * gets silently detached on iframe resize even though the element still
+ * reports as playing — see {@link isIOSWebKit}. The close-the-pane fallback
+ * is also kept: a closed pane removes one of the layout reflows that can
+ * trigger the detachment in the first place.
  */
 function useForcePlayRemoteAudio(deps: readonly unknown[]) {
-    const dispatch = useDispatch();
-
     useEffect(() => {
+        const iOS = isIOSWebKit();
+
         const forcePlay = () => {
             const audios = document.querySelectorAll<HTMLAudioElement>(
                 'audio[id^="remoteAudio_"]'
             );
 
             audios.forEach(a => {
-                if (a.paused) {
+                if (iOS && a.srcObject) {
+                    // WebKit rebind: save → null → restore. Synchronous,
+                    // the audio glitch is sub-frame, and only runs on
+                    // iOS where the detachment actually happens.
+                    const stream = a.srcObject;
+
+                    a.srcObject = null;
+                    a.srcObject = stream;
+                }
+                if (a.paused || iOS) {
                     a.play().catch(() => { /* autoplay still blocked; nothing to do */ });
                 }
             });
@@ -74,17 +102,14 @@ function useForcePlayRemoteAudio(deps: readonly unknown[]) {
         // External trigger from the AAuti marketplace parent. The marketplace
         // toggles its own "mini PIP" via a CSS class on the iframe container;
         // browser PiP events do NOT fire for that path. The parent posts a
-        // message on every PIP-class transition so we can recover audio that
-        // the browser may have paused due to the iframe resize.
-        //
-        // Force the participants pane closed first: on iPad Safari, having
-        // the pane open during the iframe resize silently detaches the
-        // MediaStream from remote audio elements and the only reliable
-        // recovery is to never enter that state. forcePlay still runs as a
-        // belt-and-braces nudge for browsers that just pause.
+        // message after every PIP-class transition so we can run forcePlay
+        // — which on iOS rebinds srcObject to recover any MediaStream the
+        // iframe-resize reflow already severed on remote audio elements.
+        // Pane/chat closing is handled by the marketplace side directly via
+        // the External API (toggleParticipantsPane / toggleChat), so this
+        // listener no longer needs to dispatch close actions.
         const onParentMessage = (e: MessageEvent) => {
             if (e.data?.source === 'aauti-marketplace' && e.data?.type === 'pip-mode-changed') {
-                dispatch(closeParticipantsPane());
                 forcePlay();
             }
         };
