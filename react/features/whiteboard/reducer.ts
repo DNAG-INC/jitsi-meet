@@ -5,6 +5,11 @@ import { RESET_WHITEBOARD, SETUP_WHITEBOARD } from './actionTypes';
 export interface IWhiteboardState {
 
     /**
+     * The title of the selected WaveBook board, shown in the panel header.
+     */
+    boardTitle?: string;
+
+    /**
      * The whiteboard collaboration details.
      */
     collabDetails?: { roomId: string; roomKey: string; };
@@ -25,10 +30,16 @@ export interface IWhiteboardState {
 const DEFAULT_STATE: IWhiteboardState = {
     isOpen: false,
     collabDetails: undefined,
-    collabServerUrl: undefined
+    collabServerUrl: undefined,
+    boardTitle: undefined
 };
 
 export interface IWhiteboardAction extends Partial<IWhiteboardState> {
+
+    /**
+     * The title of the selected WaveBook board.
+     */
+    boardTitle?: string;
 
     /**
      * The whiteboard collaboration details.
@@ -55,7 +66,8 @@ ReducerRegistry.register(
                 ...state,
                 isOpen: true,
                 collabDetails: action.collabDetails,
-                collabServerUrl: action.collabServerUrl
+                collabServerUrl: action.collabServerUrl,
+                boardTitle: action.boardTitle
             };
         }
         case RESET_WHITEBOARD:

@@ -31,6 +31,31 @@ const cardStyle: React.CSSProperties = {
     overflow: 'hidden'
 };
 
+// Long board names (created before the 15-char cap) must wrap inside the card
+// rather than spill out of it.
+const cardTitleStyle: React.CSSProperties = {
+    fontWeight: 600,
+    overflowWrap: 'anywhere'
+};
+
+const charCountStyle: React.CSSProperties = {
+    fontSize: 11,
+    color: '#a1a1aa',
+    marginTop: 6
+};
+
+const charCountErrorStyle: React.CSSProperties = {
+    fontSize: 11,
+    color: '#f87171',
+    marginTop: 6
+};
+
+const minCharsHintStyle: React.CSSProperties = {
+    fontSize: 11,
+    color: '#f87171',
+    marginTop: 2
+};
+
 interface IProps {
 
     /**
@@ -128,7 +153,7 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
         const boardId = board._id || board.id;
 
         if (boardId) {
-            dispatch(selectWhiteboardBoard(boardId) as any);
+            dispatch(selectWhiteboardBoard(boardId, board.title || board.name) as any);
             // Tell parent the picker is done. Required so re-selecting the
             // same board after a back-button press still hides the picker —
             // otherwise the parent's [boardId] effect can't detect a change.
@@ -238,7 +263,7 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
             const boardId = board?._id || board?.id;
 
             if (boardId) {
-                dispatch(selectWhiteboardBoard(boardId) as any);
+                dispatch(selectWhiteboardBoard(boardId, title) as any);
                 onSelect?.();
             } else {
                 setErrorMsg(json?.error || json?.message || 'Failed to create board');
@@ -310,7 +335,7 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                         onClick = { () => handleSelect(b) }
                         style = { cardStyle }
                         title = { b.title || b.name || b._id || b.id }>
-                        <div style = {{ fontWeight: 600 }}>{ b.title || b.name || 'Untitled' }</div>
+                        <div style = { cardTitleStyle }>{ b.title || b.name || 'Untitled' }</div>
                         { b.description && (
                             <div style = {{ color: '#d4d4d8', fontSize: 12, marginTop: 4 }}>
                                 { b.description }
@@ -344,7 +369,8 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                         <div style = {{ marginBottom: 12, fontWeight: 600 }}>New Whiteboard</div>
                         <input
                             autoFocus = { true }
-                            onChange = { e => setNewBoardName(e.target.value) }
+                            maxLength = { 15 }
+                            onChange = { e => setNewBoardName(e.target.value.slice(0, 15)) }
                             placeholder = 'Board name'
                             style = {{
                                 width: '100%',
@@ -356,6 +382,14 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                                 boxSizing: 'border-box'
                             }}
                             value = { newBoardName } />
+                        <div style = { newBoardName.trim().length < 5 ? charCountErrorStyle : charCountStyle }>
+                            { newBoardName.trim().length }/15 characters
+                        </div>
+                        { newBoardName.trim().length < 5 && (
+                            <div style = { minCharsHintStyle }>
+                                Minimum 5 characters required
+                            </div>
+                        )}
                         <div style = {{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                             <button
                                 disabled = { submitting }
@@ -371,7 +405,7 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                                 Cancel
                             </button>
                             <button
-                                disabled = { !newBoardName.trim() || submitting }
+                                disabled = { newBoardName.trim().length < 5 || submitting }
                                 onClick = { handleCreate }
                                 style = {{
                                     background: '#4f46e5',

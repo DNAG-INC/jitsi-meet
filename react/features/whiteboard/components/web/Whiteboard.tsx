@@ -50,6 +50,7 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
     const isResizing = isFilmstripResizing || isChatResizing;
     const filmstripWidth: number = useSelector(getVerticalViewMaxWidth);
     const collabDetails = useSelector(getCollabDetails);
+    const boardTitle = useSelector((state: IReduxState) => state['features/whiteboard'].boardTitle);
     const { defaultRemoteDisplayName, whiteboard } = useSelector((state: IReduxState) => state['features/base/config']);
     const localParticipant = useSelector(getLocalParticipant);
     const isLocalModerator = useSelector(isLocalParticipantModerator);
@@ -174,7 +175,7 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                             }}>
                                             ←
                                         </button>
-                                        <div style = {{ fontWeight: 600 }}>Whiteboard</div>
+                                        <div style = {{ fontWeight: 600 }}>{ boardTitle || 'Whiteboard' }</div>
                                     </div>
                                     <iframe
                                         allow = 'clipboard-write; fullscreen'
@@ -185,7 +186,7 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                             flex: '1 1 auto',
                                             width: '100%'
                                         }}
-                                        title = 'Whiteboard' />
+                                        title = { boardTitle || 'Whiteboard' } />
                                 </div>
                             )
                             : (

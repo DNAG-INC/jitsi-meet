@@ -51,7 +51,8 @@ MiddlewareRegistry.register((store: IStore) => next => action => {
         } else if (wb?.collabDetails?.roomId) {
             store.dispatch(setupWhiteboard({
                 collabDetails: wb.collabDetails,
-                collabServerUrl: generateCollabServerUrl(store.getState())
+                collabServerUrl: generateCollabServerUrl(store.getState()),
+                boardTitle: wb.boardTitle
             }));
             store.dispatch(setWhiteboardOpen(true));
         }

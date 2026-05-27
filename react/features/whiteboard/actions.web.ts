@@ -50,18 +50,22 @@ export function toggleWhiteboard() {
  * @param {string} boardId - The WaveBook board id to use as the conference whiteboard.
  * @returns {Function}
  */
-export function selectWhiteboardBoard(boardId: string) {
+export function selectWhiteboardBoard(boardId: string, boardTitle?: string) {
     return (dispatch: IStore['dispatch'], getState: IStore['getState']) => {
         const state = getState();
         const conference = getCurrentConference(state);
         const collabServerUrl = generateCollabServerUrl(state) || '';
         const collabData = {
             collabDetails: { roomId: boardId, roomKey: '' },
-            collabServerUrl
+            collabServerUrl,
+            boardTitle
         };
 
         dispatch(setupWhiteboard(collabData));
         if (isLocalParticipantModerator(state)) {
+            // boardTitle rides along in the broadcast so every participant the
+            // moderator snaps to this board also shows the real title, not the
+            // hardcoded "Whiteboard" fallback.
             conference?.getMetadataHandler().setMetadata(WHITEBOARD_ID, collabData);
         }
     };
