@@ -41,19 +41,15 @@ const cardTitleStyle: React.CSSProperties = {
 const charCountStyle: React.CSSProperties = {
     fontSize: 11,
     color: '#a1a1aa',
-    marginTop: 6
+    marginTop: 6,
+    textAlign: 'left'
 };
 
 const charCountErrorStyle: React.CSSProperties = {
     fontSize: 11,
     color: '#f87171',
-    marginTop: 6
-};
-
-const minCharsHintStyle: React.CSSProperties = {
-    fontSize: 11,
-    color: '#f87171',
-    marginTop: 2
+    marginTop: 6,
+    textAlign: 'left'
 };
 
 interface IProps {
@@ -167,8 +163,8 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
         if (!title || !apiUrl) {
             return;
         }
-        if (title.length < 5) {
-            setErrorMsg('Title must be at least 5 characters');
+        if (title.length < 3) {
+            setErrorMsg('Title must be at least 3 characters');
 
             return;
         }
@@ -382,14 +378,9 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                                 boxSizing: 'border-box'
                             }}
                             value = { newBoardName } />
-                        <div style = { newBoardName.trim().length < 5 ? charCountErrorStyle : charCountStyle }>
-                            { newBoardName.trim().length }/15 characters
+                        <div style = { newBoardName.trim().length < 3 ? charCountErrorStyle : charCountStyle }>
+                            { newBoardName.trim().length }/15 characters (min 3)
                         </div>
-                        { newBoardName.trim().length < 5 && (
-                            <div style = { minCharsHintStyle }>
-                                Minimum 5 characters required
-                            </div>
-                        )}
                         <div style = {{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                             <button
                                 disabled = { submitting }
@@ -405,7 +396,7 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                                 Cancel
                             </button>
                             <button
-                                disabled = { newBoardName.trim().length < 5 || submitting }
+                                disabled = { newBoardName.trim().length < 3 || submitting }
                                 onClick = { handleCreate }
                                 style = {{
                                     background: '#4f46e5',
