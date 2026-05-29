@@ -47,13 +47,14 @@ WORKDIR /src
 # Install deps first for better layer caching across source edits.
 COPY package.json package-lock.json ./
 COPY patches ./patches
-RUN printf '%s\n%s\n%s\n' \
+RUN B64=$(printf '%s' "$AZURE_DEVOPS_PAT_TOKEN" | base64 -w0) \
+ && printf '%s\n%s\n%s\n' \
       'package-lock=true' \
       'legacy-peer-deps=true' \
       '@aauti:registry=https://pkgs.dev.azure.com/aauti/_packaging/aauti/npm/registry/' \
       > .npmrc \
  && printf '//pkgs.dev.azure.com/aauti/_packaging/aauti/npm/registry/:_authToken=%s\n' \
-      "$AZURE_DEVOPS_PAT_TOKEN" >> .npmrc \
+      "$B64" >> .npmrc \
  && npm ci --no-audit --no-fund --legacy-peer-deps \
  && rm -f .npmrc
 
