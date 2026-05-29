@@ -1,7 +1,19 @@
 import clsx from 'clsx';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { WithTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+
+// Lazy-load the WaveBook SDK so the ~310 KB bundle only ships when a
+// participant actually opens the whiteboard. Same-origin embed (replaces
+// the previous cross-origin iframe) so screen-recording / tab-capture
+// sees the canvas pixels — fixing the "blank whiteboard in recordings"
+// bug that was the original driver of this migration.
+const WhiteboardEmbed = lazy(() =>
+    import('@aauti/whiteboard-sdk').then(m => ({ default: m.WhiteboardEmbed }))
+);
+// SDK ships a self-contained stylesheet scoped under `.wavebook-sdk` so
+// Jitsi's own CSS (and vice versa) can't override the board's look.
+import '@aauti/whiteboard-sdk/styles.css';
 
 // @ts-expect-error
 import Filmstrip from '../../../../../modules/UI/videolayout/Filmstrip';
@@ -59,6 +71,11 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
     const localParticipantName = jwtCtx?.userName || localParticipant?.name || defaultRemoteDisplayName || 'Fellow Jitster';
 
     const collabServerBaseUrl = whiteboard?.collabServerBaseUrl;
+    // REST host — distinct from the legacy iframe-page URL above. The SDK's
+    // api-client (resolveEmbedUser, comments, snapshots, members) and socket
+    // both target the API host. Falling back to collabServerBaseUrl preserves
+    // the picker-only behaviour for configs that only set the iframe URL.
+    const apiBaseUrl = whiteboard?.apiUrl || collabServerBaseUrl;
     const apiKey = whiteboard?.apiKey;
     const boardId = collabDetails?.roomId;
     const userId = jwtCtx?.userId || localParticipantId;
@@ -113,18 +130,11 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
     // only affects their local view (no metadata broadcast). If the moderator
     // later picks another board, the [boardId] effect above snaps everyone
     // back to that board.
-    const showIframe = !forcePicker && Boolean(collabServerBaseUrl) && Boolean(boardId);
-    const embedUrl = showIframe
-        ? `${collabServerBaseUrl!.replace(/\/$/, '')}/embed/${boardId}`
-            + `?userId=${encodeURIComponent(userId)}`
-            + `&userName=${encodeURIComponent(localParticipantName || '')}`
-            // Forwarded to WaveBook as the x-user-avatar header on the
-            // embed-gate request. Lets the User record get populated with
-            // the AAuti profile picture on first-time access so the
-            // Members panel shows real images, not just initials.
-            + (userAvatar ? `&avatar=${encodeURIComponent(userAvatar)}` : '')
-            + (apiKey ? `&apiKey=${encodeURIComponent(apiKey)}` : '')
-        : '';
+    // Same gating the legacy iframe used — only render the SDK embed when
+    // we have everything needed to connect. The picker is still shown
+    // otherwise (user must select a board first), so this stays as a
+    // boolean rather than an embed-URL string.
+    const showBoard = !forcePicker && Boolean(collabServerBaseUrl) && Boolean(boardId);
 
     return (
         <div
@@ -146,7 +156,7 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                             role = 'heading'>
                             { props.t('whiteboard.accessibilityLabel.heading') }
                         </span>
-                        { embedUrl
+                        { showBoard
                             ? (
                                 <div style = {{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
                                     <div
@@ -177,16 +187,60 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                         </button>
                                         <div style = {{ fontWeight: 600 }}>{ boardTitle || 'Whiteboard' }</div>
                                     </div>
-                                    <iframe
-                                        allow = 'clipboard-write; fullscreen'
-                                        allowFullScreen = { true }
-                                        src = { embedUrl }
-                                        style = {{
-                                            border: 0,
+                                    <Suspense fallback = {
+                                        <div
+                                            style = {{
+                                                flex: '1 1 auto',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: '#9CA3AF',
+                                                fontSize: 13,
+                                                background: '#fff'
+                                            }}>
+                                            Loading whiteboard…
+                                        </div>
+                                    }>
+                                        <div style = {{
                                             flex: '1 1 auto',
-                                            width: '100%'
-                                        }}
-                                        title = { boardTitle || 'Whiteboard' } />
+                                            width: '100%',
+                                            position: 'relative',
+                                            // Clip any SDK content overflow to the whiteboard-container's
+                                            // fixed height. Pencil/Marker Properties panels are taller than
+                                            // the 444px container Jitsi assigns; without this clip, the SDK's
+                                            // floating bottom toolbar gets pushed below the visible area
+                                            // and Jitsi's own toolbox overlaps the canvas. Proper fix lives
+                                            // in the SDK (PropsPanel should scroll internally); this is the
+                                            // host-side safety net.
+                                            overflow: 'hidden'
+                                        }}>
+                                            <WhiteboardEmbed
+                                                boardId = { boardId! }
+                                                user = {{
+                                                    id: userId,
+                                                    name: localParticipantName,
+                                                    avatarUrl: userAvatar || undefined,
+                                                    role: 'editor'
+                                                }}
+                                                connection = {{
+                                                    // REST + WS both target the API host (whiteboard-
+                                                    // apiqa.aauti.com), NOT the iframe-page host
+                                                    // (whiteboard-qa.aauti.com) — the latter doesn't
+                                                    // serve `/api/...` and returns 404 on the embed-gate
+                                                    // OPTIONS preflight, which is what was tripping us.
+                                                    apiBaseUrl: apiBaseUrl!,
+                                                    wsBaseUrl: apiBaseUrl!,
+                                                    apiKey: apiKey || ''
+                                                }}
+                                                style = {{ width: '100%', height: '100%' }}
+                                                onError = { e =>
+                                                    // Surface to console for now; can wire to Jitsi's
+                                                    // notification toast in a follow-up.
+                                                    // eslint-disable-next-line no-console
+                                                    console.error('[wavebook-sdk]', e.code, e.message)
+                                                } />
+                                        </div>
+                                    </Suspense>
                                 </div>
                             )
                             : (
