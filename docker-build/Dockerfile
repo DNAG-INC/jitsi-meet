@@ -22,6 +22,18 @@ ARG BASE_TAG=stable-10741
 
 FROM node:${NODE_VERSION}-bookworm-slim AS builder
 
+# Build-time secret: the AAuti Azure Artifacts feed PAT (Packaging: Read).
+# Passed by the pipeline via `docker build --build-arg AZURE_DEVOPS_PAT_TOKEN=$(secret) ...`.
+# Required so `npm ci` can resolve @aauti/whiteboard-sdk from the private
+# feed at pkgs.dev.azure.com/aauti/_packaging/aauti/npm/registry.
+#
+# Why not just copy the repo's .npmrc? It's listed in .dockerignore — keeps
+# the token out of every Docker build context regardless of which Dockerfile
+# is consuming it. We synthesise .npmrc here from the ARG, run install, then
+# rm it. The token only exists inside this one RUN layer; the runtime stage
+# starts FROM jitsi/base and COPY's only specific build outputs (no .npmrc).
+ARG AZURE_DEVOPS_PAT_TOKEN
+
 ENV DEBIAN_FRONTEND=noninteractive \
     NODE_OPTIONS=--max-old-space-size=8192
 
@@ -35,7 +47,15 @@ WORKDIR /src
 # Install deps first for better layer caching across source edits.
 COPY package.json package-lock.json ./
 COPY patches ./patches
-RUN npm ci --no-audit --no-fund --legacy-peer-deps
+RUN printf '%s\n%s\n%s\n' \
+      'package-lock=true' \
+      'legacy-peer-deps=true' \
+      '@aauti:registry=https://pkgs.dev.azure.com/aauti/_packaging/aauti/npm/registry/' \
+      > .npmrc \
+ && printf '//pkgs.dev.azure.com/aauti/_packaging/aauti/npm/registry/:_authToken=%s\n' \
+      "$AZURE_DEVOPS_PAT_TOKEN" >> .npmrc \
+ && npm ci --no-audit --no-fund --legacy-peer-deps \
+ && rm -f .npmrc
 
 COPY . .
 RUN make compile && make deploy
