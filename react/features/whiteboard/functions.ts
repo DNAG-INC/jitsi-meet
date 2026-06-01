@@ -41,6 +41,12 @@ export interface IWaveBookMember {
     userId: string;
 }
 
+export interface IWaveBookJwtWhiteboard {
+    apiKey?: string;
+    apiUrl?: string;
+    collabServerBaseUrl?: string;
+}
+
 export interface IWaveBookJwtContext {
     category?: string;
     instituteId?: string;
@@ -50,6 +56,7 @@ export interface IWaveBookJwtContext {
     userId?: string;
     userName?: string;
     userRole?: string;
+    whiteboard?: IWaveBookJwtWhiteboard;
 }
 
 export const getWaveBookJwtContext = (state: IReduxState): IWaveBookJwtContext | null => {
@@ -62,6 +69,7 @@ export const getWaveBookJwtContext = (state: IReduxState): IWaveBookJwtContext |
         const payload: any = jwtDecode(jwt);
         const ctx = payload?.context || {};
         const meta = ctx.metadata || {};
+        const wb = meta.whiteboard && typeof meta.whiteboard === 'object' ? meta.whiteboard : undefined;
 
         return {
             userId: ctx.user?.id,
@@ -71,7 +79,12 @@ export const getWaveBookJwtContext = (state: IReduxState): IWaveBookJwtContext |
             category: meta.category,
             subCategory: meta.subCategory,
             instituteId: meta.instituteId,
-            members: Array.isArray(meta.members) ? meta.members : []
+            members: Array.isArray(meta.members) ? meta.members : [],
+            whiteboard: wb && {
+                apiKey: typeof wb.apiKey === 'string' ? wb.apiKey : undefined,
+                apiUrl: typeof wb.apiUrl === 'string' ? wb.apiUrl : undefined,
+                collabServerBaseUrl: typeof wb.collabServerBaseUrl === 'string' ? wb.collabServerBaseUrl : undefined
+            }
         };
     } catch {
         return null;
