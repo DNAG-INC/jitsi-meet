@@ -59,6 +59,14 @@ deploy-appbundle:
 		$(BUILD_DIR)/close3.min.js \
 		$(BUILD_DIR)/close3.min.js.map \
 		$(DEPLOY_DIR) || true
+	# Lazy-loaded webpack chunks (numeric-id filenames like 494.min.js,
+	# 868.min.js, etc.) emitted by dynamic imports such as
+	# `import('@aauti/whiteboard-sdk')` in Whiteboard.tsx. Without this glob
+	# the chunks die in build/ and `__webpack_require__.u()` 404s at runtime
+	# the first time a user opens a feature that lazy-loads them. Each entry
+	# point above is still listed explicitly so the build fails loudly if any
+	# named bundle goes missing.
+	cp $(BUILD_DIR)/*.min.js $(BUILD_DIR)/*.min.js.map $(DEPLOY_DIR) 2>/dev/null || true
 
 deploy-lib-jitsi-meet:
 	cp \
