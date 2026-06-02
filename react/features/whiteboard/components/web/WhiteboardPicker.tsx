@@ -83,13 +83,8 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
     // at JWT-mint time and misses anyone who joined the call afterwards.
     const remoteParticipants = useSelector(getRemoteParticipants);
 
-    // JWT-carried whiteboard config wins over config.js so Jibri's headless
-    // Chrome (which never sees marketplace's configOverwrite) can still
-    // resolve the picker API. Matches the same overlay applied in
-    // Whiteboard.tsx for WhiteboardEmbed credentials.
-    const jwtWB = jwtCtx?.whiteboard;
-    const apiUrl = jwtWB?.apiUrl || whiteboardConfig.apiUrl;
-    const apiKey = jwtWB?.apiKey || whiteboardConfig.apiKey;
+    const apiUrl = whiteboardConfig.apiUrl;
+    const apiKey = whiteboardConfig.apiKey;
     // Per-user/session context comes from JWT custom claims minted by the
     // AAuti backend: context.user.{id,name} + context.metadata.{sessionId,
     // category, subCategory, instituteId}. See getWaveBookJwtContext.
