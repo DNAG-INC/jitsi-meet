@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { WithTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -11,6 +11,21 @@ import { useSelector } from 'react-redux';
 const WhiteboardEmbed = lazy(() =>
     import('@aauti/whiteboard-sdk').then(m => ({ default: m.WhiteboardEmbed }))
 );
+
+// Forward-declare props that are present on `feat/recorder-mode` of the
+// SDK but haven't shipped in the installed package version yet. Once
+// the SDK is bumped to a release including those props, this
+// augmentation is a no-op duplicate (TS allows that for interfaces).
+declare module '@aauti/whiteboard-sdk' {
+    interface WhiteboardEmbedProps {
+
+        /** Triggers startLeading() once on mount when the local user is the moderator. */
+        autoLeadOnMount?: boolean;
+
+        /** True for Jibri's headless Chrome. Forces follow + bypasses membership check. */
+        isRecorder?: boolean;
+    }
+}
 // SDK ships a self-contained stylesheet scoped under `.wavebook-sdk` so
 // Jitsi's own CSS (and vice versa) can't override the board's look.
 import '@aauti/whiteboard-sdk/styles.css';
@@ -80,6 +95,16 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
     const boardId = collabDetails?.roomId;
     const userId = jwtCtx?.userId || localParticipantId;
     const userAvatar = localParticipant?.avatarURL || '';
+
+    // Hoisted to satisfy `react/jsx-no-bind` (inline arrow in props would
+    // re-create the handler on every render). Stable identity is also nice
+    // for the SDK's effect deps in case it ever memoizes on this callback.
+    const handleSdkError = useCallback((e: { code?: string; message?: string; }) => {
+        // Surface to console for now; can wire to Jitsi's notification
+        // toast in a follow-up.
+        // eslint-disable-next-line no-console
+        console.error('[wavebook-sdk]', e.code, e.message);
+    }, []);
 
     // Local "show picker" override so the moderator can navigate back to the
     // board list without affecting other participants. Cleared whenever a new
@@ -215,13 +240,8 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                             overflow: 'hidden'
                                         }}>
                                             <WhiteboardEmbed
+                                                autoLeadOnMount = { isLocalModerator }
                                                 boardId = { boardId! }
-                                                user = {{
-                                                    id: userId,
-                                                    name: localParticipantName,
-                                                    avatarUrl: userAvatar || undefined,
-                                                    role: 'editor'
-                                                }}
                                                 connection = {{
                                                     // REST + WS both target the API host (whiteboard-
                                                     // apiqa.aauti.com), NOT the iframe-page host
@@ -232,13 +252,15 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                                     wsBaseUrl: apiBaseUrl!,
                                                     apiKey: apiKey || ''
                                                 }}
+                                                isRecorder = { whiteboard?.recorderMode === true }
+                                                onError = { handleSdkError }
                                                 style = {{ width: '100%', height: '100%' }}
-                                                onError = { e =>
-                                                    // Surface to console for now; can wire to Jitsi's
-                                                    // notification toast in a follow-up.
-                                                    // eslint-disable-next-line no-console
-                                                    console.error('[wavebook-sdk]', e.code, e.message)
-                                                } />
+                                                user = {{
+                                                    id: userId,
+                                                    name: localParticipantName,
+                                                    avatarUrl: userAvatar || undefined,
+                                                    role: 'editor'
+                                                }} />
                                         </div>
                                     </Suspense>
                                 </div>

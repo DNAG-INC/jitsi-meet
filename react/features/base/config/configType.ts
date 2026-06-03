@@ -147,6 +147,17 @@ export interface IWhiteboardConfig {
     collabServerBaseUrl?: string;
     enabled?: boolean;
     limitUrl?: string;
+    /**
+     * When true, the local SDK enters recorder mode — used by Jibri's
+     * headless Chrome only. Set by the Helm `_custom_config_js` block
+     * when the URL path matches `-recording-<env>`. The WaveBook SDK
+     * reads this and skips the per-board membership check + forces
+     * follow-the-leader for the duration of the recording.
+     *
+     * Live users never see this flag (their URLs don't match the
+     * pattern), so leaving it absent on the config is the default.
+     */
+    recorderMode?: boolean;
     userLimit?: number;
 }
 
