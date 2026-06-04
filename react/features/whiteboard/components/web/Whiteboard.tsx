@@ -78,7 +78,7 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
     const filmstripWidth: number = useSelector(getVerticalViewMaxWidth);
     const collabDetails = useSelector(getCollabDetails);
     const boardTitle = useSelector((state: IReduxState) => state['features/whiteboard'].boardTitle);
-    const { defaultRemoteDisplayName, whiteboard } = useSelector((state: IReduxState) => state['features/base/config']);
+    const { defaultRemoteDisplayName, whiteboard, iAmRecorder } = useSelector((state: IReduxState) => state['features/base/config']);
     const localParticipant = useSelector(getLocalParticipant);
     const isLocalModerator = useSelector(isLocalParticipantModerator);
     const jwtCtx = useSelector(getWaveBookJwtContext);
@@ -92,6 +92,24 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
     // the picker-only behaviour for configs that only set the iframe URL.
     const apiBaseUrl = whiteboard?.apiUrl || collabServerBaseUrl;
     const apiKey = whiteboard?.apiKey;
+
+    // Jibri detection — primary signal is the canonical `iAmRecorder`
+    // config flag that Jibri injects into its own Chrome session via
+    // URL hash (Jitsi's standard way to identify recorder sessions,
+    // used across base/connection, chat, filmstrip, feedback, etc.).
+    //
+    // Fallback: read the URL hash directly. Defensive against Jitsi's
+    // hash-config loader skipping the parse (rare, but cheap insurance).
+    //
+    // We intentionally DO NOT fall back to `whiteboard?.recorderMode`.
+    // That Helm-set flag was matched against the conference room name
+    // pattern (e.g. `class_...-recording-dev`), but the same room is
+    // joined by EVERY live participant — so the flag leaked to non-Jibri
+    // users and caused cursor suppression + autoLead bypass + synthetic
+    // identity resolution for everyone. iAmRecorder is per-session
+    // (set by Jibri itself), so it's correctly scoped to Jibri only.
+    const isJibriRecorder = iAmRecorder === true
+        || (typeof window !== 'undefined' && window.location.hash.includes('iAmRecorder=true'));
     const boardId = collabDetails?.roomId;
     const userId = jwtCtx?.userId || localParticipantId;
     const userAvatar = localParticipant?.avatarURL || '';
@@ -252,7 +270,7 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                                     wsBaseUrl: apiBaseUrl!,
                                                     apiKey: apiKey || ''
                                                 }}
-                                                isRecorder = { whiteboard?.recorderMode === true }
+                                                isRecorder = { isJibriRecorder }
                                                 onError = { handleSdkError }
                                                 style = {{ width: '100%', height: '100%' }}
                                                 user = {{
