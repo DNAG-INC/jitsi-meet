@@ -124,6 +124,28 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
         console.error('[wavebook-sdk]', e.code, e.message);
     }, []);
 
+    // Host hook for the SDK's "AI Generate" toolbar button. The SDK
+    // doesn't ship an AI provider — host owns provider choice + billing.
+    // We call the WaveBook server's /api/ai/generate endpoint with the
+    // same tenant API-key the SDK uses for the rest of its REST calls.
+    // Without this prop the SDK hides the AI Generate button entirely.
+    // Hoisted to useCallback (not inline) to satisfy react/jsx-no-bind.
+    const handleAiGenerate = useCallback(async (prompt: string) => {
+        const base = (apiBaseUrl || '').replace(/\/$/, '');
+        const res = await fetch(`${base}/api/ai/generate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey || '',
+                'x-user-id': userId
+            },
+            body: JSON.stringify({ prompt })
+        });
+        const json = await res.json();
+
+        return json?.data?.elements || json?.elements || [];
+    }, [ apiBaseUrl, apiKey, userId ]);
+
     // Local "show picker" override so the moderator can navigate back to the
     // board list without affecting other participants. Cleared whenever a new
     // board id arrives (picker selection) so the iframe shows again.
@@ -271,6 +293,7 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                                     apiKey: apiKey || ''
                                                 }}
                                                 isRecorder = { isJibriRecorder }
+                                                onAiGenerate = { handleAiGenerate }
                                                 onError = { handleSdkError }
                                                 style = {{ width: '100%', height: '100%' }}
                                                 user = {{
