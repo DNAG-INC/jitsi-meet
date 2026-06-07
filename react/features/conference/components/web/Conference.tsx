@@ -22,6 +22,7 @@ import CalleeInfoContainer from '../../../invite/components/callee-info/CalleeIn
 import LargeVideo from '../../../large-video/components/LargeVideo.web';
 import LobbyScreen from '../../../lobby/components/web/LobbyScreen';
 import { getIsLobbyVisible } from '../../../lobby/functions';
+import MeetingCountdown from '../../../meeting-duration/components/web/MeetingCountdown';
 import { getOverlayToRender } from '../../../overlay/functions.web';
 import ParticipantsPane from '../../../participants-pane/components/web/ParticipantsPane';
 import Prejoin from '../../../prejoin/components/web/Prejoin';
@@ -284,6 +285,7 @@ class Conference extends AbstractConference<IProps, any> {
                     onMouseMove = { isMobileBrowser() ? undefined : this._onShowToolbar }>
                     { _showPrejoin || _showLobby || <ConferenceInfo /> }
                     <Notice />
+                    { _showPrejoin || _showLobby || <MeetingCountdown /> }
                     <div
                         id = 'videospace'
                         onTouchStart = { this._onVideospaceTouchStart }>

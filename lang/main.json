@@ -803,6 +803,11 @@
         "youAreAlone": "You are the only one in the meeting"
     },
     "me": "me",
+    "meetingDuration": {
+        "countdownLabel": "Meeting ends in {{time}}",
+        "warningDescription": "This meeting will end in 5 minutes.",
+        "warningTitle": "Meeting ending soon"
+    },
     "notify": {
         "OldElectronAPPTitle": "Security vulnerability!",
         "allowAll": "Allow All",

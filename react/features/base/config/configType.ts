@@ -491,6 +491,22 @@ export interface IConfig {
     logging?: ILoggingConfig;
     mainToolbarButtons?: Array<Array<string>>;
     maxFullResolutionParticipants?: number;
+
+    /**
+     * The maximum allowed meeting duration in minutes. When set to a positive
+     * value, participants see an on-screen countdown plus a warning before the
+     * limit, and the meeting is ended for everyone once the limit is reached.
+     * When unset or 0 the meeting has no time limit.
+     */
+    maxMeetingDuration?: number;
+
+    /**
+     * The absolute time (in epoch seconds, UTC) at which the meeting must end,
+     * regardless of when it started or how many times the room is restarted.
+     * Useful for paid/scheduled sessions. When both this and
+     * {@link maxMeetingDuration} are set, the earlier of the two applies.
+     */
+    maxMeetingEndTime?: number;
     microsoftApiApplicationClientID?: string;
     moderatedRoomServiceUrl?: string;
     mouseMoveCallbackInterval?: number;

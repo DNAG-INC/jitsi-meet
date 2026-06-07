@@ -184,6 +184,8 @@ export default [
     'logging',
     'mainToolbarButtons',
     'maxFullResolutionParticipants',
+    'maxMeetingDuration',
+    'maxMeetingEndTime',
     'mouseMoveCallbackInterval',
     'notifications',
     'notificationTimeouts',
