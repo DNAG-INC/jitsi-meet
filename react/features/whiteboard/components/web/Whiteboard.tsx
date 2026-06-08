@@ -22,6 +22,9 @@ declare module '@aauti/whiteboard-sdk' {
         /** Triggers startLeading() once on mount when the local user is the moderator. */
         autoLeadOnMount?: boolean;
 
+        /** Tenant-customisable top-left header content rendered over the canvas. */
+        boardHeader?: React.ReactNode;
+
         /** True for Jibri's headless Chrome. Forces follow + bypasses membership check. */
         isRecorder?: boolean;
     }
@@ -44,6 +47,7 @@ import {
     isWhiteboardOpen,
     isWhiteboardVisible
 } from '../../functions';
+
 import WhiteboardPicker from './WhiteboardPicker';
 
 /**
@@ -223,39 +227,12 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                         </span>
                         { showBoard
                             ? (
-                                <div style = {{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
-                                    <div
-                                        style = {{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 12,
-                                            padding: '8px 12px',
-                                            background: '#18181b',
-                                            color: '#fafafa',
-                                            borderBottom: '1px solid #3f3f46',
-                                            flex: '0 0 auto'
-                                        }}>
-                                        <button
-                                            aria-label = 'Back to whiteboard list'
-                                            onClick = { () => setForcePicker(true) }
-                                            style = {{
-                                                background: 'transparent',
-                                                color: '#3083EF',
-                                                border: 'none',
-                                                cursor: 'pointer',
-                                                fontSize: 18,
-                                                padding: '4px 8px',
-                                                lineHeight: 1,
-                                                fontWeight: 600
-                                            }}>
-                                            ←
-                                        </button>
-                                        <div style = {{ fontWeight: 600 }}>{ boardTitle || 'Whiteboard' }</div>
-                                    </div>
-                                    <Suspense fallback = {
+                                <Suspense
+                                    fallback = {
                                         <div
                                             style = {{
-                                                flex: '1 1 auto',
+                                                height: '100%',
+                                                width: '100%',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
@@ -266,8 +243,9 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                             Loading whiteboard…
                                         </div>
                                     }>
-                                        <div style = {{
-                                            flex: '1 1 auto',
+                                    <div
+                                        style = {{
+                                            height: '100%',
                                             width: '100%',
                                             position: 'relative',
                                             // Clip any SDK content overflow to the whiteboard-container's
@@ -279,32 +257,66 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                             // host-side safety net.
                                             overflow: 'hidden'
                                         }}>
-                                            <WhiteboardEmbed
-                                                autoLeadOnMount = { isLocalModerator }
-                                                boardId = { boardId! }
-                                                connection = {{
-                                                    // REST + WS both target the API host (whiteboard-
-                                                    // apiqa.aauti.com), NOT the iframe-page host
-                                                    // (whiteboard-qa.aauti.com) — the latter doesn't
-                                                    // serve `/api/...` and returns 404 on the embed-gate
-                                                    // OPTIONS preflight, which is what was tripping us.
-                                                    apiBaseUrl: apiBaseUrl!,
-                                                    wsBaseUrl: apiBaseUrl!,
-                                                    apiKey: apiKey || ''
-                                                }}
-                                                isRecorder = { isJibriRecorder }
-                                                onAiGenerate = { handleAiGenerate }
-                                                onError = { handleSdkError }
-                                                style = {{ width: '100%', height: '100%' }}
-                                                user = {{
-                                                    id: userId,
-                                                    name: localParticipantName,
-                                                    avatarUrl: userAvatar || undefined,
-                                                    role: 'editor'
-                                                }} />
-                                        </div>
-                                    </Suspense>
-                                </div>
+                                        <WhiteboardEmbed
+                                            autoLeadOnMount = { isLocalModerator }
+                                            boardHeader = {
+                                                <>
+                                                    <button
+                                                        aria-label = 'Back to whiteboard list'
+                                                        onClick = { () => setForcePicker(true) }
+                                                        style = {{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            width: 32,
+                                                            height: 32,
+                                                            borderRadius: 8,
+                                                            background: 'rgba(48,131,239,0.10)',
+                                                            border: 'none',
+                                                            color: '#3083EF',
+                                                            cursor: 'pointer',
+                                                            flexShrink: 0
+                                                        }}>
+                                                        <span style = {{ fontSize: 16, fontWeight: 700, lineHeight: 1 }}>←</span>
+                                                    </button>
+                                                    <div
+                                                        style = {{
+                                                            fontFamily: '"Plus Jakarta Sans", "Poppins", system-ui, sans-serif',
+                                                            fontSize: 14,
+                                                            fontWeight: 600,
+                                                            color: '#0F172A',
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                            whiteSpace: 'nowrap',
+                                                            minWidth: 0
+                                                        }}>
+                                                        { boardTitle || 'Whiteboard' }
+                                                    </div>
+                                                </>
+                                            }
+                                            boardId = { boardId! }
+                                            connection = {{
+                                                // REST + WS both target the API host (whiteboard-
+                                                // apiqa.aauti.com), NOT the iframe-page host
+                                                // (whiteboard-qa.aauti.com) — the latter doesn't
+                                                // serve `/api/...` and returns 404 on the embed-gate
+                                                // OPTIONS preflight, which is what was tripping us.
+                                                apiBaseUrl: apiBaseUrl!,
+                                                wsBaseUrl: apiBaseUrl!,
+                                                apiKey: apiKey || ''
+                                            }}
+                                            isRecorder = { isJibriRecorder }
+                                            onAiGenerate = { handleAiGenerate }
+                                            onError = { handleSdkError }
+                                            style = {{ width: '100%', height: '100%' }}
+                                            user = {{
+                                                id: userId,
+                                                name: localParticipantName,
+                                                avatarUrl: userAvatar || undefined,
+                                                role: 'editor'
+                                            }} />
+                                    </div>
+                                </Suspense>
                             )
                             : (
                                 <WhiteboardPicker
