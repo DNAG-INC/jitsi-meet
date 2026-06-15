@@ -804,9 +804,9 @@
     },
     "me": "me",
     "meetingDuration": {
-        "countdownLabel": "Meeting ends in {{time}}",
-        "warningDescription": "This meeting will end in 5 minutes.",
-        "warningTitle": "Meeting ending soon"
+        "countdownLabel": "Meeting closes in {{time}}",
+        "warningDescription": "The scheduled time is over. This meeting will close in 5 minutes.",
+        "warningTitle": "Meeting time is up"
     },
     "notify": {
         "OldElectronAPPTitle": "Security vulnerability!",

@@ -1,8 +1,9 @@
-# Timed Meetings (Teams-style auto-end)
+# Timed Meetings (Teams-style auto-end with grace buffer)
 
-A meeting can be given an **allotted time**. Participants see a live on-screen
-countdown and a warning before the limit, and the meeting **ends for everyone**
-when time is up — like Microsoft Teams / Zoom scheduled meetings.
+A meeting can be given a **scheduled end**. When it's reached, the meeting does
+**not** close immediately — a **5-minute grace buffer** kicks in, during which
+participants see a "time is up" toast and a live countdown. The meeting **ends
+for everyone** when the buffer elapses (i.e. at `scheduledEnd + 5 min`).
 
 The feature is **completely inert** unless one of its config values is set, so
 existing deployments are unaffected.
@@ -11,17 +12,20 @@ existing deployments are unaffected.
 
 ## What the user sees
 
-1. **Live countdown banner** — an amber "Meeting ends in `mm:ss`" pill at the
-   top-centre, visible during the final **5 minutes**. Stays up even when the
-   toolbar auto-hides.
-2. **Warning toast** — "Meeting ending soon — This meeting will end in 5 minutes."
-   appears once when the 5-minute window opens.
-3. **Auto-end** — at the limit the **moderator's** client ends the conference
-   for everyone (`endConference()`). Non-moderators leave locally as a fallback
-   if no moderator is present.
+When the **scheduled end** is reached:
 
-The countdown/warning are shown to **all** participants so everyone gets the
-heads-up. Only the moderator can actually end the meeting for others.
+1. **Warning toast** — "Meeting time is up — The scheduled time is over. This
+   meeting will close in 5 minutes." appears once, at the scheduled end.
+2. **Live countdown banner** — an amber "Meeting closes in `mm:ss`" pill at the
+   top-centre, counting down the **5-minute grace buffer**. Stays up even when
+   the toolbar auto-hides.
+3. **Auto-end** — when the buffer hits 0, the **moderator's** client ends the
+   conference for everyone (`endConference()`). Non-moderators leave locally as
+   a fallback if no moderator is present.
+
+So nothing happens *before* the scheduled time; the toast + countdown appear the
+moment the scheduled end passes and run for the grace buffer. The countdown/
+warning are shown to **all** participants; only the moderator actually ends it.
 
 ---
 
@@ -37,25 +41,32 @@ Two independent config values (both optional, both whitelisted in
 
 ### How they combine
 
-The meeting ends at **whichever limit comes first**:
+The **scheduled end** is **whichever limit comes first**, and the meeting
+actually closes a 5-minute grace buffer later:
 
 ```
-effectiveEnd = min( conferenceStart + maxMeetingDuration , maxMeetingEndTime )
+scheduledEnd = min( conferenceStart + maxMeetingDuration , maxMeetingEndTime )
+effectiveEnd = scheduledEnd + 5 min          // grace buffer (MEETING_END_BUFFER_MS)
 ```
 
 - Only `maxMeetingDuration` set → "N minutes from start" (restartable).
-- Only `maxMeetingEndTime` set → "ends at this clock time, no matter what".
+- Only `maxMeetingEndTime` set → "scheduled at this clock time, no matter what".
 - **Both set** → capped by length **and** never past the absolute end. This is
-  the recommended setup for paid/scheduled sessions: a normal start ends at the
-  booked end time, while an early start can't run longer than the booked length.
+  the recommended setup for paid/scheduled sessions: a normal start is scheduled
+  to end at the booked end time, while an early start can't run longer than the
+  booked length.
 
-### Worked example — a 3:30–4:00 PM slot
+The grace buffer is a fixed 5 minutes (`MEETING_END_BUFFER_MS`); the
+toast/countdown window equals the buffer, so they appear exactly at the
+scheduled end.
 
-| Scenario | `maxMeetingDuration` | `maxMeetingEndTime` | Ends at |
-|---|---|---|---|
-| Normal join at 3:30 | 30 | 4:00 PM | **4:00 PM** |
-| Early start at 3:00 | 30 | 4:00 PM | **3:30** (duration cap wins) |
-| Room emptied & restarted at 3:50 | 30 | 4:00 PM | **4:00 PM** (absolute end wins) |
+### Worked example — a 3:30–4:00 PM slot (closes at scheduledEnd + 5 min)
+
+| Scenario | `maxMeetingDuration` | `maxMeetingEndTime` | Scheduled end | Closes at |
+|---|---|---|---|---|
+| Normal join at 3:30 | 30 | 4:00 PM | 4:00 PM | **4:05 PM** |
+| Early start at 3:00 | 30 | 4:00 PM | 3:30 (duration cap) | **3:35** |
+| Room emptied & restarted at 3:50 | 30 | 4:00 PM | 4:00 PM (absolute end) | **4:05 PM** |
 
 ---
 
@@ -127,8 +138,9 @@ if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
 ```
 
 So `session.endTime` → `maxMeetingEndTime`, and `session.endTime − session.startTime`
-→ `maxMeetingDuration`. The meeting ends at the scheduled end, capped at the
-booked length.
+→ `maxMeetingDuration`. The marketplace passes the **scheduled** end; the fork
+adds the 5-minute grace buffer on top, so the meeting actually closes at
+`scheduledEnd + 5 min`.
 
 `configOverwrite` is baked when the iframe is created, so **re-join** after a
 config change to pick up new values.
@@ -141,10 +153,10 @@ Feature module: `react/features/meeting-duration/`
 
 | File | Responsibility |
 |---|---|
-| `functions.ts` | `getMeetingEndTimestamp()` = `min(start+duration, endTime)`; the single source of truth all other parts read. |
-| `middleware.web.ts` | Schedules the warning + auto-end on join; ends for everyone (moderator) or leaves (fallback) at the limit. |
-| `components/web/MeetingCountdown.tsx` | The live countdown banner (final 5 min). |
-| `constants.ts` | 5-minute warning window, notification id. |
+| `functions.ts` | `getScheduledEndTimestamp()` = `min(start+duration, endTime)`; `getMeetingEndTimestamp()` = `scheduledEnd + MEETING_END_BUFFER_MS` (the effective close), the single source of truth all other parts read. |
+| `middleware.web.ts` | Schedules the warning + auto-end on join; ends for everyone (moderator) or leaves (fallback) at the effective end. |
+| `components/web/MeetingCountdown.tsx` | The live countdown banner during the grace buffer. |
+| `constants.ts` | `MEETING_END_BUFFER_MS` (grace buffer), `MEETING_END_WARNING_MS` (= buffer, the countdown window), notification id. |
 
 Wiring: middleware registered in `react/features/app/middlewares.web.ts`;
 banner rendered in `react/features/conference/components/web/Conference.tsx`.
