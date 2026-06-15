@@ -20,8 +20,9 @@ When the **scheduled end** is reached:
    top-centre, counting down the **5-minute grace buffer**. Stays up even when
    the toolbar auto-hides.
 3. **Auto-end** — when the buffer hits 0, the **moderator's** client ends the
-   conference for everyone (`endConference()`). Non-moderators leave locally as
-   a fallback if no moderator is present.
+   conference for everyone (`endConference()`). Auto-end is **moderator-only** —
+   non-moderators never self-disconnect; they are removed when the moderator
+   ends the conference.
 
 So nothing happens *before* the scheduled time; the toast + countdown appear the
 moment the scheduled end passes and run for the grace buffer. The countdown/
@@ -154,7 +155,7 @@ Feature module: `react/features/meeting-duration/`
 | File | Responsibility |
 |---|---|
 | `functions.ts` | `getScheduledEndTimestamp()` = `min(start+duration, endTime)`; `getMeetingEndTimestamp()` = `scheduledEnd + MEETING_END_BUFFER_MS` (the effective close), the single source of truth all other parts read. |
-| `middleware.web.ts` | Schedules the warning + auto-end on join; ends for everyone (moderator) or leaves (fallback) at the effective end. |
+| `middleware.web.ts` | Schedules the warning + auto-end on join; at the effective end the moderator ends the conference for everyone (non-moderators never self-disconnect). |
 | `components/web/MeetingCountdown.tsx` | The live countdown banner during the grace buffer. |
 | `constants.ts` | `MEETING_END_BUFFER_MS` (grace buffer), `MEETING_END_WARNING_MS` (= buffer, the countdown window), notification id. |
 

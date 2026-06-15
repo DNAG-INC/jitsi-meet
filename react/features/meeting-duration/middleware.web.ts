@@ -6,7 +6,6 @@ import {
     CONFERENCE_WILL_LEAVE
 } from '../base/conference/actionTypes';
 import { endConference } from '../base/conference/actions.any';
-import { hangup } from '../base/connection/actions.web';
 import { isLocalParticipantModerator } from '../base/participants/functions';
 import MiddlewareRegistry from '../base/redux/MiddlewareRegistry';
 import { hideNotification, showWarningNotification } from '../notifications/actions';
@@ -58,9 +57,15 @@ function showWarning(dispatch: IStore['dispatch']) {
 }
 
 /**
- * Ends the meeting for everyone when the moderator hits the time limit. Other
- * participants hang up locally as a fallback so the room still empties even if
- * no moderator is present.
+ * Ends the meeting for everyone when the time limit is reached. This is
+ * moderator-only: only the moderator's client calls {@code endConference()},
+ * which removes every participant. Non-moderators never act on the limit
+ * themselves — they are removed when the moderator ends the conference.
+ *
+ * Non-moderators must NOT self-hangup here: their end timestamp can already be
+ * in the past on join (clock skew, a stale conference-created timestamp, or
+ * timing config that differs from the moderator's), which would disconnect them
+ * seconds after joining an otherwise-ongoing session.
  *
  * @param {IStore} store - The redux store.
  * @returns {void}
@@ -72,9 +77,6 @@ function endMeeting({ dispatch, getState }: IStore) {
     if (isLocalParticipantModerator(getState())) {
         logger.info('Meeting duration limit reached, ending conference for everyone.');
         dispatch(endConference());
-    } else {
-        logger.info('Meeting duration limit reached, leaving conference.');
-        dispatch(hangup());
     }
 }
 
