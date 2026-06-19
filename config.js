@@ -341,18 +341,12 @@ var config = {
     // Use -1 to disable.
     // maxFullResolutionParticipants: 2,
 
-    // The maximum allowed meeting duration in minutes. When set to a positive value,
-    // participants see an on-screen countdown and a warning toast before the limit is
-    // reached, and the meeting is ended for everyone once the limit is hit (Teams-style).
-    // Leave unset or 0 for no time limit. Measured from when the conference actually
-    // starts, so it resets if the room fully empties and is recreated.
-    // maxMeetingDuration: 60,
-
-    // The absolute time (epoch seconds, UTC) at which the meeting must end, independent
-    // of when it started or how often the room restarts - ideal for paid/scheduled
-    // sessions. When both maxMeetingDuration and maxMeetingEndTime are set, whichever
-    // comes first ends the meeting. Typically passed per-session via configOverwrite or
-    // reused from the JWT 'exp' claim. Leave unset for no absolute end.
+    // The absolute time (epoch seconds, UTC) at which the meeting must end - ideal for
+    // paid/scheduled sessions. At this time participants see a 5-minute "time is up"
+    // countdown + toast, and the session ends for everyone 5 minutes later (Teams-style).
+    // Independent of when the conference started or how often the room restarts. Usually
+    // passed per-session via configOverwrite (from the booking's end time) or reused from
+    // the JWT 'exp' claim. Leave unset for no time limit.
     // maxMeetingEndTime: 1780745400,
 
     // w3c spec-compliant video constraints to use for video capture. Currently

@@ -493,18 +493,12 @@ export interface IConfig {
     maxFullResolutionParticipants?: number;
 
     /**
-     * The maximum allowed meeting duration in minutes. When set to a positive
-     * value, participants see an on-screen countdown plus a warning before the
-     * limit, and the meeting is ended for everyone once the limit is reached.
-     * When unset or 0 the meeting has no time limit.
-     */
-    maxMeetingDuration?: number;
-
-    /**
      * The absolute time (in epoch seconds, UTC) at which the meeting must end,
      * regardless of when it started or how many times the room is restarted.
-     * Useful for paid/scheduled sessions. When both this and
-     * {@link maxMeetingDuration} are set, the earlier of the two applies.
+     * When set, participants see a 5-minute "time is up" countdown starting at
+     * this instant and the session ends for everyone 5 minutes later. Unset =
+     * no time limit. Typically passed per-session via configOverwrite (from the
+     * booking's end time) or reused from the JWT 'exp' claim.
      */
     maxMeetingEndTime?: number;
     microsoftApiApplicationClientID?: string;

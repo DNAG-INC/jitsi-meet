@@ -2,10 +2,10 @@ import { IStore } from '../app/types';
 import {
     CONFERENCE_JOINED,
     CONFERENCE_LEFT,
-    CONFERENCE_TIMESTAMP_CHANGED,
     CONFERENCE_WILL_LEAVE
 } from '../base/conference/actionTypes';
 import { endConference } from '../base/conference/actions.any';
+import { hangup } from '../base/connection/actions.web';
 import { isLocalParticipantModerator } from '../base/participants/functions';
 import MiddlewareRegistry from '../base/redux/MiddlewareRegistry';
 import { hideNotification, showWarningNotification } from '../notifications/actions';
@@ -57,15 +57,18 @@ function showWarning(dispatch: IStore['dispatch']) {
 }
 
 /**
- * Ends the meeting for everyone when the time limit is reached. This is
- * moderator-only: only the moderator's client calls {@code endConference()},
- * which removes every participant. Non-moderators never act on the limit
- * themselves — they are removed when the moderator ends the conference.
+ * Ends the meeting when the time limit is reached:
+ *   - **moderator** → {@code endConference()} — removes everyone at once, one
+ *     clean end on the moderator's clock.
+ *   - **non-moderator** → {@code hangup()} — leaves locally, so the room still
+ *     empties even with no moderator present.
  *
- * Non-moderators must NOT self-hangup here: their end timestamp can already be
- * in the past on join (clock skew, a stale conference-created timestamp, or
- * timing config that differs from the moderator's), which would disconnect them
- * seconds after joining an otherwise-ongoing session.
+ * Acting on every client is safe because the end is an *absolute* wall-clock
+ * instant ({@code maxMeetingEndTime} + grace), not derived from the
+ * conference-created timestamp. So during a live session it can never be
+ * "already past" on join (the cause of the old self-disconnect bug) — it's only
+ * past once the booked session + grace is genuinely over, where leaving is
+ * correct.
  *
  * @param {IStore} store - The redux store.
  * @returns {void}
@@ -75,14 +78,17 @@ function endMeeting({ dispatch, getState }: IStore) {
     dispatch(hideNotification(MEETING_DURATION_NOTIFICATION_UID));
 
     if (isLocalParticipantModerator(getState())) {
-        logger.info('Meeting duration limit reached, ending conference for everyone.');
+        logger.info('Meeting time limit reached, ending conference for everyone.');
         dispatch(endConference());
+    } else {
+        logger.info('Meeting time limit reached, leaving the conference.');
+        dispatch(hangup());
     }
 }
 
 /**
  * Schedules the warning notification and the auto-end action based on the
- * configured meeting duration. If the limit is already within the warning
+ * configured meeting end time. If the limit is already within the warning
  * window (or past) when joining, the corresponding action fires immediately.
  *
  * @param {IStore} store - The redux store.
@@ -123,15 +129,10 @@ MiddlewareRegistry.register(store => next => action => {
     switch (action.type) {
     case CONFERENCE_JOINED:
 
-        // (Re)schedule using whatever start timestamp is known so far. The
-        // server-provided timestamp may instead arrive via
-        // CONFERENCE_TIMESTAMP_CHANGED, which reschedules below.
+        // The end is driven purely by maxMeetingEndTime (config, available at
+        // join), so scheduling once on join is enough — no dependency on the
+        // conference-created timestamp.
         scheduleTimers(store);
-        break;
-    case CONFERENCE_TIMESTAMP_CHANGED:
-        if (action.conferenceTimestamp) {
-            scheduleTimers(store);
-        }
         break;
     case CONFERENCE_WILL_LEAVE:
     case CONFERENCE_LEFT:

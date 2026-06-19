@@ -19,55 +19,48 @@ When the **scheduled end** is reached:
 2. **Live countdown banner** — an amber "Meeting closes in `mm:ss`" pill at the
    top-centre, counting down the **5-minute grace buffer**. Stays up even when
    the toolbar auto-hides.
-3. **Auto-end** — when the buffer hits 0, the **moderator's** client ends the
-   conference for everyone (`endConference()`). Auto-end is **moderator-only** —
-   non-moderators never self-disconnect; they are removed when the moderator
-   ends the conference.
+3. **Auto-end** — when the buffer hits 0:
+   - the **moderator's** client calls `endConference()`, removing everyone at
+     once (one clean end), **and**
+   - **non-moderators** `hangup()` (leave locally) as a fallback, so the room
+     still empties even with **no moderator present**.
 
 So nothing happens *before* the scheduled time; the toast + countdown appear the
-moment the scheduled end passes and run for the grace buffer. The countdown/
-warning are shown to **all** participants; only the moderator actually ends it.
+moment the scheduled end passes and run for the grace buffer, then every
+participant is dropped on the deadline.
 
 ---
 
 ## Configuration
 
-Two independent config values (both optional, both whitelisted in
-`configOverwrite` / URL / JWT):
+One config value (optional, whitelisted in `configOverwrite` / URL / JWT):
 
 | Key | Unit | Meaning |
 |---|---|---|
-| `maxMeetingDuration` | **minutes** | Length cap, measured from when the conference actually starts. Resets if the room fully empties and is recreated. |
-| `maxMeetingEndTime` | **epoch seconds, UTC** | Absolute wall-clock end. Immune to restarts. Matches the JWT `exp` convention. |
+| `maxMeetingEndTime` | **epoch seconds, UTC** | Absolute wall-clock end (the booked end). Immune to room restarts. Matches the JWT `exp` convention. Unset = no limit. |
 
-### How they combine
-
-The **scheduled end** is **whichever limit comes first**, and the meeting
-actually closes a 5-minute grace buffer later:
+### How the end is computed
 
 ```
-scheduledEnd = min( conferenceStart + maxMeetingDuration , maxMeetingEndTime )
-effectiveEnd = scheduledEnd + 5 min          // grace buffer (MEETING_END_BUFFER_MS)
+effectiveEnd = maxMeetingEndTime + 5 min     // grace buffer (MEETING_END_BUFFER_MS)
 ```
 
-- Only `maxMeetingDuration` set → "N minutes from start" (restartable).
-- Only `maxMeetingEndTime` set → "scheduled at this clock time, no matter what".
-- **Both set** → capped by length **and** never past the absolute end. This is
-  the recommended setup for paid/scheduled sessions: a normal start is scheduled
-  to end at the booked end time, while an early start can't run longer than the
-  booked length.
+The meeting closes at the booked end **plus** a fixed 5-minute grace. The
+toast/countdown window equals the buffer, so they appear exactly at
+`maxMeetingEndTime` and tick down the 5 minutes.
 
-The grace buffer is a fixed 5 minutes (`MEETING_END_BUFFER_MS`); the
-toast/countdown window equals the buffer, so they appear exactly at the
-scheduled end.
+There is **no** duration / start-time input — the end is a single absolute
+instant. That makes it restart-proof and means it can never be "already past on
+join" during a live session (it's only past once the booked session + grace is
+genuinely over), which is what keeps every client safe to leave on the deadline.
 
-### Worked example — a 3:30–4:00 PM slot (closes at scheduledEnd + 5 min)
+### Worked example — a 3:30–4:00 PM slot
 
-| Scenario | `maxMeetingDuration` | `maxMeetingEndTime` | Scheduled end | Closes at |
-|---|---|---|---|---|
-| Normal join at 3:30 | 30 | 4:00 PM | 4:00 PM | **4:05 PM** |
-| Early start at 3:00 | 30 | 4:00 PM | 3:30 (duration cap) | **3:35** |
-| Room emptied & restarted at 3:50 | 30 | 4:00 PM | 4:00 PM (absolute end) | **4:05 PM** |
+| Scenario | `maxMeetingEndTime` | Toast + countdown appear | Closes at |
+|---|---|---|---|
+| Any join during the slot | 4:00 PM | 4:00 PM | **4:05 PM** |
+| Room emptied & restarted at 3:50 | 4:00 PM | 4:00 PM | **4:05 PM** (absolute, restart-proof) |
+| Join after 4:05 (session over) | 4:00 PM | — | leaves immediately (session already ended) |
 
 ---
 
@@ -83,8 +76,7 @@ The embedding host passes the values when creating the iframe:
 const api = new JitsiMeetExternalAPI(domain, {
   roomName: 'session-1234',
   configOverwrite: {
-    maxMeetingEndTime: 1780808400,   // booked end, epoch seconds UTC
-    maxMeetingDuration: 30           // booked slot length, minutes (optional)
+    maxMeetingEndTime: 1780808400    // booked end, epoch seconds UTC
   }
 });
 ```
@@ -98,15 +90,13 @@ maxMeetingEndTime: Math.floor(new Date('2026-06-07T16:00:00+05:30').getTime() / 
 ### 2. Globally via server `config.js`
 
 ```js
-// applies to every room on this deployment
-config.maxMeetingDuration = 60;
-// config.maxMeetingEndTime = 1780808400;  // rarely useful globally
+// rarely useful globally — normally set per-session via configOverwrite
+config.maxMeetingEndTime = 1780808400;
 ```
 
 ### 3. URL hash (testing only — participant-visible)
 
 ```
-https://your-domain/room#config.maxMeetingDuration=1
 https://your-domain/room#config.maxMeetingEndTime=1780808400
 ```
 
@@ -120,28 +110,21 @@ be trusted.
 
 ## AAuti marketplace integration
 
-In the React app (`aautimpwebapplicationreactjs`), the meeting embed derives
-both values from the booked session and passes them through `configOverwrite`:
+In the React app (`aautimpwebapplicationreactjs`), the meeting embed derives the
+end from the booked session and passes it through `configOverwrite`:
 
 **File:** `src/components/calendar/join_class/Jitsi/index.js`
 
 ```js
-const startMs = localEvent?.startTime ? Date.parse(localEvent.startTime) : NaN;
-const endMs   = localEvent?.endTime   ? Date.parse(localEvent.endTime)   : NaN;
-
+const endMs = localEvent?.endTime ? Date.parse(localEvent.endTime) : NaN;
 if (Number.isFinite(endMs)) {
-  maxMeetingEndTime = Math.floor(endMs / 1000);             // absolute end
-}
-if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
-  maxMeetingDuration = Math.round((endMs - startMs) / 60000); // slot length
+  maxMeetingEndTime = Math.floor(endMs / 1000);   // booked end → epoch seconds
 }
 // ...added into configOverwrite only when present
 ```
 
-So `session.endTime` → `maxMeetingEndTime`, and `session.endTime − session.startTime`
-→ `maxMeetingDuration`. The marketplace passes the **scheduled** end; the fork
-adds the 5-minute grace buffer on top, so the meeting actually closes at
-`scheduledEnd + 5 min`.
+So `session.endTime` → `maxMeetingEndTime`. The fork adds the 5-minute grace
+buffer on top, so the session closes for everyone at `endTime + 5 min`.
 
 `configOverwrite` is baked when the iframe is created, so **re-join** after a
 config change to pick up new values.
@@ -154,8 +137,8 @@ Feature module: `react/features/meeting-duration/`
 
 | File | Responsibility |
 |---|---|
-| `functions.ts` | `getScheduledEndTimestamp()` = `min(start+duration, endTime)`; `getMeetingEndTimestamp()` = `scheduledEnd + MEETING_END_BUFFER_MS` (the effective close), the single source of truth all other parts read. |
-| `middleware.web.ts` | Schedules the warning + auto-end on join; at the effective end the moderator ends the conference for everyone (non-moderators never self-disconnect). |
+| `functions.ts` | `getScheduledEndTimestamp()` = `maxMeetingEndTime × 1000`; `getMeetingEndTimestamp()` = `scheduledEnd + MEETING_END_BUFFER_MS` (the effective close), the single source of truth all other parts read. |
+| `middleware.web.ts` | Schedules the warning + auto-end on join; at the effective end the moderator calls `endConference()` (ends for all at once) and non-moderators `hangup()` (fallback so a moderator-less room still empties). |
 | `components/web/MeetingCountdown.tsx` | The live countdown banner during the grace buffer. |
 | `constants.ts` | `MEETING_END_BUFFER_MS` (grace buffer), `MEETING_END_WARNING_MS` (= buffer, the countdown window), notification id. |
 
@@ -167,25 +150,29 @@ through in `configWhitelist.ts`. Strings live under `meetingDuration.*` in
 
 ### Maintainer note
 
-`conferenceTimestamp` is typed `number` but lib-jitsi-meet delivers it as a
-**string** at runtime. `functions.ts` coerces with `Number()` before arithmetic
-— without it, `start + duration` string-concatenates into a garbage value and
-the feature silently does nothing. Keep the coercion.
+Every client leaves on the deadline (no moderator gating). This is only safe
+because the end is an **absolute** `maxMeetingEndTime` (+ grace), **not** derived
+from the conference-created timestamp — so it can never be "already past" on join
+during a live session (the cause of an earlier self-disconnect bug). If you ever
+reintroduce a *duration-from-start* input, do **not** let clients self-`hangup()`
+on it, or that bug returns.
 
 ---
 
 ## Behaviour notes / edge cases
 
-- **Restart resets duration, not end-time.** `maxMeetingDuration` is measured
-  from conference creation, so if the room fully empties and a new one is
-  created the clock restarts. `maxMeetingEndTime` is absolute and immune to
-  this — use it (or both) for paid sessions.
+- **Restart-proof.** `maxMeetingEndTime` is an absolute instant, so emptying and
+  recreating the room never moves the end.
 - **Late joiner inside the window** → warning + countdown show immediately.
-- **Joins after the limit** → ends immediately on join.
-- **Moderator promoted mid-meeting** → role is re-checked at end time, so a
-  promoted moderator correctly ends for everyone.
-- **Background-tab throttling** → the end uses a one-shot timer; a minimised
-  moderator tab can fire slightly late. Acceptable for now.
+- **Joins after the limit** → leaves immediately on join (the session is over).
+- **Clock skew** → with a moderator present, `endConference()` ends everyone at
+  once on the moderator's clock (no per-client skew). With no moderator, each
+  non-moderator leaves on its own clock (a fast one early, a slow one lingers
+  briefly alone). For a single authoritative end regardless, enforce it
+  server-side (reservation).
+- **Background-tab throttling** → the end is a timer; an active call is exempt
+  from intensive throttling, but a closed/slept tab won't fire. Server-side
+  enforcement removes this dependency.
 - **Toast text is static "5 minutes"** even for a late joiner with less time
   left; the live banner is the accurate one.
 - **`reducedUI` mode** doesn't render the banner (auto-end still works).
