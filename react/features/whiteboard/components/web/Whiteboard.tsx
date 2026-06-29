@@ -282,8 +282,9 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                                     <div
                                                         style = {{
                                                             fontFamily: '"Plus Jakarta Sans", "Poppins", system-ui, sans-serif',
-                                                            fontSize: 14,
+                                                            fontSize: 13,
                                                             fontWeight: 600,
+                                                            lineHeight: 1.25,
                                                             color: '#0F172A',
                                                             overflow: 'hidden',
                                                             textOverflow: 'ellipsis',
