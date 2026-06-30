@@ -6,6 +6,12 @@
 const _elementsBlacklist = [
     'input',
     'textarea',
+
+    // contentEditable rich-text hosts (e.g. the whiteboard SDK's text tool).
+    // Without this, typing letters that map to global shortcuts (m, d, r, w…)
+    // leaks into mute / screenshare / raise-hand / whiteboard-toggle while the
+    // user is writing. Excludes `=false` so non-editable nodes don't match.
+    '[contenteditable]:not([contenteditable="false"])',
     'button',
     '[role=button]',
     '[role=menuitem]',
