@@ -16,7 +16,7 @@
   "author": "",
   "readmeFilename": "README.md",
   "dependencies": {
-    "@aauti/whiteboard-sdk": "^0.2.1",
+    "@aauti/whiteboard-sdk": "^0.2.2",
     "@amplitude/analytics-browser": "2.17.12",
     "@amplitude/analytics-react-native": "1.4.13",
     "@braintree/sanitize-url": "7.0.0",
