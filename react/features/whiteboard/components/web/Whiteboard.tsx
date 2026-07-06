@@ -307,6 +307,14 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                                 apiKey: apiKey || ''
                                             }}
                                             isRecorder = { isJibriRecorder }
+
+                                            // Force a clean unmount/remount when the board changes,
+                                            // instead of reusing one instance and mutating boardId, so
+                                            // the previous board's socket / Y.Doc / member + presence
+                                            // state is fully torn down — switching across multiple
+                                            // boards can't accumulate stale state. (Alphabetical prop
+                                            // order is enforced by react/jsx-sort-props.)
+                                            key = { boardId }
                                             onAiGenerate = { handleAiGenerate }
                                             onError = { handleSdkError }
                                             style = {{ width: '100%', height: '100%' }}
