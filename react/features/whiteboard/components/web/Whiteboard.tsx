@@ -320,7 +320,13 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                             style = {{ width: '100%', height: '100%' }}
                                             user = {{
                                                 id: userId,
-                                                name: localParticipantName,
+
+                                                // Jibri joins Jitsi unnamed → "Fellow Jitster". Force the
+                                                // recorder's whiteboard name to "Session Recorder" so it's
+                                                // stable even if the SDK's recorder-branch resolution races
+                                                // the iAmRecorder config (which otherwise falls back to the
+                                                // Jitsi display name).
+                                                name: isJibriRecorder ? 'Session Recorder' : localParticipantName,
                                                 avatarUrl: userAvatar || undefined,
                                                 role: 'editor'
                                             }} />
