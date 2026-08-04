@@ -178,6 +178,7 @@ const events = {
     'toolbar-visibility-changed': 'toolbarVisibilityChanged',
     'transcribing-status-changed': 'transcribingStatusChanged',
     'transcription-chunk-received': 'transcriptionChunkReceived',
+    'whiteboard-created': 'whiteboardCreated',
     'whiteboard-status-changed': 'whiteboardStatusChanged'
 };
 

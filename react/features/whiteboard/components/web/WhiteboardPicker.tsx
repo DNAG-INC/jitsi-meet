@@ -260,6 +260,17 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
 
             if (boardId) {
                 dispatch(selectWhiteboardBoard(boardId, title) as any);
+
+                // Tell the embedding Aauti app a board was just created so it
+                // can post a "whiteboard added" activity into the session feed.
+                // Emitted HERE (not in selectWhiteboardBoard or the metadata
+                // interceptor) on purpose: this runs once, only on the creator's
+                // (moderator's) client, and only for a genuine create — never on
+                // a plain select, and never on every participant when the
+                // metadata broadcast converges.
+                if (typeof APP !== 'undefined') {
+                    APP.API.notifyWhiteboardCreated({ boardId, title, sessionId });
+                }
                 onSelect?.();
             } else {
                 setErrorMsg(json?.error || json?.message || 'Failed to create board');

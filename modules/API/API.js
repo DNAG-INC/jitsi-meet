@@ -2346,6 +2346,28 @@ class API {
     }
 
     /**
+     * Notify external application (if API is enabled) that a whiteboard was
+     * created. Distinct from `notifyWhiteboardStatusChanged`, which only carries
+     * an open/close status enum with no board identity: the embedding app needs
+     * the board id, title and session id to post a "whiteboard added" activity
+     * into the session feed.
+     *
+     * @param {Object} details - The created board details.
+     * @param {string} details.boardId - The created board id.
+     * @param {string} details.title - The board title.
+     * @param {string} [details.sessionId] - The Aauti session id (from the JWT).
+     * @returns {void}
+     */
+    notifyWhiteboardCreated({ boardId, title, sessionId }) {
+        this._sendEvent({
+            name: 'whiteboard-created',
+            boardId,
+            title,
+            sessionId
+        });
+    }
+
+    /**
      * Notify external application (if API is enabled) if non participant message
      * is received.
      *
