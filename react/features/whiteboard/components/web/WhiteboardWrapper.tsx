@@ -1,29 +1,17 @@
-import i18next from 'i18next';
-import React, { Suspense, useCallback, useRef } from 'react';
+import React from 'react';
 import { useSelector } from 'react-redux';
 
 import { IReduxState } from '../../../app/types';
-import { WHITEBOARD_UI_OPTIONS } from '../../constants';
-import { getStorageBackendUrl } from '../../functions';
-
-const LazyExcalidrawApp = React.lazy(async () => {
-    const [ { ExcalidrawApp } ] = await Promise.all([
-        import(/* webpackChunkName: "excalidraw" */ '@jitsi/excalidraw'),
-        import(/* webpackChunkName: "excalidraw" */ '@jitsi/excalidraw/index.css')
-    ]);
-
-    return { default: ExcalidrawApp };
-});
 
 /**
- * Whiteboard wrapper for mobile.
+ * Whiteboard wrapper.
+ * Renders the AAuti WaveBook embed in place of the default Excalidraw whiteboard.
  *
  * @returns {JSX.Element}
  */
 const WhiteboardWrapper = ({
     className,
     collabDetails,
-    collabServerUrl,
     localParticipantName
 }: {
     className?: string;
@@ -34,45 +22,32 @@ const WhiteboardWrapper = ({
     collabServerUrl: string;
     localParticipantName: string;
 }) => {
-    const excalidrawAPIRef = useRef<any>(null);
-    const collabAPIRef = useRef<any>(null);
-    const storageBackendUrl = useSelector(getStorageBackendUrl);
-    const jwt = useSelector((state: IReduxState) => state['features/base/jwt']).jwt || '';
+    const { collabServerBaseUrl, apiKey } = useSelector(
+        (state: IReduxState) => state['features/base/config'].whiteboard || {}
+    );
 
-    const getExcalidrawAPI = useCallback(excalidrawAPI => {
-        if (excalidrawAPIRef.current) {
-            return;
-        }
-        excalidrawAPIRef.current = excalidrawAPI;
-    }, []);
+    if (!collabServerBaseUrl) {
+        return null;
+    }
 
-    const getCollabAPI = useCallback(collabAPI => {
-        if (collabAPIRef.current) {
-            return;
-        }
-        collabAPIRef.current = collabAPI;
-        collabAPIRef.current.setUsername(localParticipantName);
-    }, [ localParticipantName ]);
+    const base = collabServerBaseUrl.replace(/\/$/, '');
+    const embedUrl = `${base}/embed/${collabDetails.roomId}`
+        + `?userId=${encodeURIComponent(localParticipantName || '')}`
+        + `&userName=${encodeURIComponent(localParticipantName || '')}`
+        + (apiKey ? `&apiKey=${encodeURIComponent(apiKey)}` : '');
 
     return (
         <div className = { className }>
-            <div className = 'excalidraw-wrapper'>
-                <Suspense fallback = { null }>
-                    <LazyExcalidrawApp
-                        collabDetails = { collabDetails }
-                        collabServerUrl = { collabServerUrl }
-                        excalidraw = {{
-                            isCollaborating: true,
-                            langCode: i18next.language,
-                            theme: 'light',
-                            UIOptions: WHITEBOARD_UI_OPTIONS
-                        }}
-                        getCollabAPI = { getCollabAPI }
-                        getExcalidrawAPI = { getExcalidrawAPI }
-                        jwt = { jwt }
-                        storageBackendUrl = { storageBackendUrl } />
-                </Suspense>
-            </div>
+            <iframe
+                allow = 'clipboard-write; fullscreen'
+                allowFullScreen = { true }
+                src = { embedUrl }
+                style = {{
+                    border: 0,
+                    height: '100%',
+                    width: '100%'
+                }}
+                title = 'Whiteboard' />
         </div>
     );
 };

@@ -142,9 +142,22 @@ export interface INoiseSuppressionConfig {
 }
 
 export interface IWhiteboardConfig {
+    apiKey?: string;
+    apiUrl?: string;
     collabServerBaseUrl?: string;
     enabled?: boolean;
     limitUrl?: string;
+    /**
+     * When true, the local SDK enters recorder mode — used by Jibri's
+     * headless Chrome only. Set by the Helm `_custom_config_js` block
+     * when the URL path matches `-recording-<env>`. The WaveBook SDK
+     * reads this and skips the per-board membership check + forces
+     * follow-the-leader for the duration of the recording.
+     *
+     * Live users never see this flag (their URLs don't match the
+     * pattern), so leaving it absent on the config is the default.
+     */
+    recorderMode?: boolean;
     storageBackendUrl?: string;
     userLimit?: number;
 }
@@ -566,6 +579,16 @@ export interface IConfig {
     logging?: ILoggingConfig;
     mainToolbarButtons?: Array<Array<string>>;
     maxFullResolutionParticipants?: number;
+
+    /**
+     * The absolute time (in epoch seconds, UTC) at which the meeting must end,
+     * regardless of when it started or how many times the room is restarted.
+     * When set, participants see a 5-minute "time is up" countdown starting at
+     * this instant and the session ends for everyone 5 minutes later. Unset =
+     * no time limit. Typically passed per-session via configOverwrite (from the
+     * booking's end time) or reused from the JWT 'exp' claim.
+     */
+    maxMeetingEndTime?: number;
     microsoftApiApplicationClientID?: string;
     moderatedRoomServiceUrl?: string;
     mouseMoveCallbackInterval?: number;

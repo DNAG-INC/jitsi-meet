@@ -356,6 +356,14 @@ var config = {
     // Use -1 to disable.
     // maxFullResolutionParticipants: 2,
 
+    // The absolute time (epoch seconds, UTC) at which the meeting must end - ideal for
+    // paid/scheduled sessions. At this time participants see a 5-minute "time is up"
+    // countdown + toast, and the session ends for everyone 5 minutes later (Teams-style).
+    // Independent of when the conference started or how often the room restarts. Usually
+    // passed per-session via configOverwrite (from the booking's end time) or reused from
+    // the JWT 'exp' claim. Leave unset for no time limit.
+    // maxMeetingEndTime: 1780745400,
+
     // w3c spec-compliant video constraints to use for video capture. Currently
     // used by browsers that return true from lib-jitsi-meet's
     // util#browser#usesNewGumFlow. The constraints are independent from

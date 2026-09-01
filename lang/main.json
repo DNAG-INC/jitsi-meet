@@ -837,6 +837,11 @@
         "lowBandwidthMode": "Low bandwidth"
     },
     "me": "me",
+    "meetingDuration": {
+        "countdownLabel": "Meeting closes in {{time}}",
+        "warningDescription": "The scheduled time is over. This meeting will close in 5 minutes.",
+        "warningTitle": "Meeting time is up"
+    },
     "multiScreen": {
         "noParticipants": "No participants",
         "showOnStage": "Show {{name}} on the second screen",

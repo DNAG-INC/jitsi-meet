@@ -16,17 +16,20 @@ import { IWhiteboardAction } from './reducer';
  * @returns {{
  *     type: SETUP_WHITEBOARD,
  *     collabDetails: { roomId: string, roomKey: string },
- *     collabServerUrl: string
+ *     collabServerUrl: string,
+ *     boardTitle: string
  * }}
  */
-export const setupWhiteboard = ({ collabDetails, collabServerUrl }: {
+export const setupWhiteboard = ({ collabDetails, collabServerUrl, boardTitle }: {
+    boardTitle?: string;
     collabDetails: { roomId: string; roomKey: string; };
     collabServerUrl?: string;
 }): IWhiteboardAction => {
     return {
         type: SETUP_WHITEBOARD,
         collabDetails,
-        collabServerUrl
+        collabServerUrl,
+        boardTitle
     };
 };
 

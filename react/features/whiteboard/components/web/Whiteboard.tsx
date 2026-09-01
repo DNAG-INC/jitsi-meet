@@ -1,35 +1,54 @@
 import clsx from 'clsx';
-import i18next from 'i18next';
-import React, { Suspense, useCallback, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { WithTranslation } from 'react-i18next';
-import { useSelector, useStore } from 'react-redux';
+import { useSelector } from 'react-redux';
+
+// Lazy-load the WaveBook SDK so the ~310 KB bundle only ships when a
+// participant actually opens the whiteboard. Same-origin embed (replaces
+// the previous cross-origin iframe) so screen-recording / tab-capture
+// sees the canvas pixels — fixing the "blank whiteboard in recordings"
+// bug that was the original driver of this migration.
+const WhiteboardEmbed = lazy(() =>
+    import('@aauti/whiteboard-sdk').then(m => ({ default: m.WhiteboardEmbed }))
+);
+
+// Forward-declare props that are present on `feat/recorder-mode` of the
+// SDK but haven't shipped in the installed package version yet. Once
+// the SDK is bumped to a release including those props, this
+// augmentation is a no-op duplicate (TS allows that for interfaces).
+declare module '@aauti/whiteboard-sdk' {
+    interface WhiteboardEmbedProps {
+
+        /** Triggers startLeading() once on mount when the local user is the moderator. */
+        autoLeadOnMount?: boolean;
+
+        /** Tenant-customisable top-left header content rendered over the canvas. */
+        boardHeader?: React.ReactNode;
+
+        /** True for Jibri's headless Chrome. Forces follow + bypasses membership check. */
+        isRecorder?: boolean;
+    }
+}
+// SDK ships a self-contained stylesheet scoped under `.wavebook-sdk` so
+// Jitsi's own CSS (and vice versa) can't override the board's look.
+import '@aauti/whiteboard-sdk/styles.css';
 
 // @ts-expect-error
 import Filmstrip from '../../../../../modules/UI/videolayout/Filmstrip';
 import { IReduxState } from '../../../app/types';
-import { getCurrentConference } from '../../../base/conference/functions';
-import { translate } from '../../../base/i18n/functions.web';
-import { getLocalParticipant } from '../../../base/participants/functions';
+import { translate } from '../../../base/i18n/functions';
+import { getLocalParticipant, isLocalParticipantModerator } from '../../../base/participants/functions';
 import { getVerticalViewMaxWidth } from '../../../filmstrip/functions.web';
 import { getToolboxHeight } from '../../../toolbox/functions.web';
 import { shouldDisplayTileView } from '../../../video-layout/functions.any';
-import { WHITEBOARD_UI_OPTIONS, WHITEBOARD_UI_OPTIONS_WITH_IMAGES } from '../../constants';
 import {
     getCollabDetails,
-    getCollabServerUrl,
-    getStorageBackendUrl,
+    getWaveBookJwtContext,
     isWhiteboardOpen,
     isWhiteboardVisible
 } from '../../functions';
 
-const LazyExcalidrawApp = React.lazy(async () => {
-    const [ { ExcalidrawApp } ] = await Promise.all([
-        import(/* webpackChunkName: "excalidraw" */ '@jitsi/excalidraw'),
-        import(/* webpackChunkName: "excalidraw" */ '@jitsi/excalidraw/index.css')
-    ]);
-
-    return { default: ExcalidrawApp };
-});
+import WhiteboardPicker from './WhiteboardPicker';
 
 /**
  * Space taken by meeting elements like the subject and the watermark.
@@ -45,23 +64,14 @@ interface IDimensions {
     width: string;
 }
 
-interface IMeetingDetails {
-    getStorageToken: () => Promise<string | undefined>;
-    jwt: string;
-    roomJid: string;
-    sessionId: string;
-}
-
 /**
  * The Whiteboard component.
+ * Renders the AAuti WaveBook embed in place of the default Excalidraw whiteboard.
  *
  * @param {Props} props - The React props passed to this component.
  * @returns {JSX.Element} - The React component.
  */
 const Whiteboard = (props: WithTranslation): JSX.Element => {
-    const excalidrawAPIRef = useRef<any>(null);
-    const collabAPIRef = useRef<any>(null);
-
     const isOpen = useSelector(isWhiteboardOpen);
     const isVisible = useSelector(isWhiteboardVisible);
     const isInTileView = useSelector(shouldDisplayTileView);
@@ -71,45 +81,87 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
     const isResizing = isFilmstripResizing || isChatResizing;
     const filmstripWidth: number = useSelector(getVerticalViewMaxWidth);
     const collabDetails = useSelector(getCollabDetails);
-    const collabServerUrl = useSelector(getCollabServerUrl);
-    const storageBackendUrl = useSelector(getStorageBackendUrl);
-    const { defaultRemoteDisplayName } = useSelector((state: IReduxState) => state['features/base/config']);
-    const localParticipantName = useSelector(getLocalParticipant)?.name || defaultRemoteDisplayName || 'Fellow Jitster';
+    const boardTitle = useSelector((state: IReduxState) => state['features/whiteboard'].boardTitle);
+    const { defaultRemoteDisplayName, whiteboard, iAmRecorder } = useSelector((state: IReduxState) => state['features/base/config']);
+    const localParticipant = useSelector(getLocalParticipant);
+    const isLocalModerator = useSelector(isLocalParticipantModerator);
+    const jwtCtx = useSelector(getWaveBookJwtContext);
+    const localParticipantId = localParticipant?.id || '';
+    const localParticipantName = jwtCtx?.userName || localParticipant?.name || defaultRemoteDisplayName || 'Fellow Jitster';
 
-    const jwt = useSelector((state: IReduxState) => state['features/base/jwt']).jwt || '';
-    const store = useStore();
-    const state = store.getState();
-    const conference = getCurrentConference(state);
-    const sessionId = conference?.getMeetingUniqueId();
-    const roomJid = conference?.room?.roomjid;
+    const collabServerBaseUrl = whiteboard?.collabServerBaseUrl;
+    // REST host — distinct from the legacy iframe-page URL above. The SDK's
+    // api-client (resolveEmbedUser, comments, snapshots, members) and socket
+    // both target the API host. Falling back to collabServerBaseUrl preserves
+    // the picker-only behaviour for configs that only set the iframe URL.
+    const apiBaseUrl = whiteboard?.apiUrl || collabServerBaseUrl;
+    const apiKey = whiteboard?.apiKey;
 
-    // Provides a fresh short-term credential for each whiteboard storage
-    // request, so that image binaries are uploaded/fetched with a token that is
-    // refreshed transparently as the previous one expires.
-    const getStorageToken = useCallback(async () => {
-        const conf = getCurrentConference(store.getState());
+    // Jibri detection — primary signal is the canonical `iAmRecorder`
+    // config flag that Jibri injects into its own Chrome session via
+    // URL hash (Jitsi's standard way to identify recorder sessions,
+    // used across base/connection, chat, filmstrip, feedback, etc.).
+    //
+    // Fallback: read the URL hash directly. Defensive against Jitsi's
+    // hash-config loader skipping the parse (rare, but cheap insurance).
+    //
+    // We intentionally DO NOT fall back to `whiteboard?.recorderMode`.
+    // That Helm-set flag was matched against the conference room name
+    // pattern (e.g. `class_...-recording-dev`), but the same room is
+    // joined by EVERY live participant — so the flag leaked to non-Jibri
+    // users and caused cursor suppression + autoLead bypass + synthetic
+    // identity resolution for everyone. iAmRecorder is per-session
+    // (set by Jibri itself), so it's correctly scoped to Jibri only.
+    const isJibriRecorder = iAmRecorder === true
+        || (typeof window !== 'undefined' && window.location.hash.includes('iAmRecorder=true'));
+    const boardId = collabDetails?.roomId;
+    const userId = jwtCtx?.userId || localParticipantId;
+    const userAvatar = localParticipant?.avatarURL || '';
 
-        if (!conf) {
-            return undefined;
-        }
+    // Hoisted to satisfy `react/jsx-no-bind` (inline arrow in props would
+    // re-create the handler on every render). Stable identity is also nice
+    // for the SDK's effect deps in case it ever memoizes on this callback.
+    const handleSdkError = useCallback((e: { code?: string; message?: string; }) => {
+        // Surface to console for now; can wire to Jitsi's notification
+        // toast in a follow-up.
+        // eslint-disable-next-line no-console
+        console.error('[wavebook-sdk]', e.code, e.message);
+    }, []);
 
-        return conf.getShortTermCredentials(conf.getFileSharing()?.getIdentityType());
-    }, [ store ]);
+    // Host hook for the SDK's "AI Generate" toolbar button. The SDK
+    // doesn't ship an AI provider — host owns provider choice + billing.
+    // We call the WaveBook server's /api/ai/generate endpoint with the
+    // same tenant API-key the SDK uses for the rest of its REST calls.
+    // Without this prop the SDK hides the AI Generate button entirely.
+    // Hoisted to useCallback (not inline) to satisfy react/jsx-no-bind.
+    const handleAiGenerate = useCallback(async (prompt: string) => {
+        const base = (apiBaseUrl || '').replace(/\/$/, '');
+        const res = await fetch(`${base}/api/ai/generate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey || '',
+                'x-user-id': userId
+            },
+            body: JSON.stringify({ prompt })
+        });
+        const json = await res.json();
 
-    const meetingDetails: IMeetingDetails = {
-        sessionId: sessionId ?? '',
-        roomJid: roomJid ?? '',
-        jwt: jwt,
-        getStorageToken
-    };
+        return json?.data?.elements || json?.elements || [];
+    }, [ apiBaseUrl, apiKey, userId ]);
+
+    // Local "show picker" override so the moderator can navigate back to the
+    // board list without affecting other participants. Cleared whenever a new
+    // board id arrives (picker selection) so the iframe shows again.
+    const [ forcePicker, setForcePicker ] = useState(false);
+    const prevBoardIdRef = useRef<string | undefined>(boardId);
 
     useEffect(() => {
-        if (!collabAPIRef.current) {
-            return;
+        if (boardId && boardId !== prevBoardIdRef.current) {
+            setForcePicker(false);
         }
-
-        collabAPIRef.current.setUsername(localParticipantName);
-    }, [ localParticipantName ]);
+        prevBoardIdRef.current = boardId;
+    }, [ boardId ]);
 
     /**
     * Computes the width and the height of the component.
@@ -142,20 +194,16 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
         };
     };
 
-    const getExcalidrawAPI = useCallback(excalidrawAPI => {
-        if (excalidrawAPIRef.current) {
-            return;
-        }
-        excalidrawAPIRef.current = excalidrawAPI;
-    }, []);
-
-    const getCollabAPI = useCallback(collabAPI => {
-        if (collabAPIRef.current) {
-            return;
-        }
-        collabAPIRef.current = collabAPI;
-        collabAPIRef.current.setUsername(localParticipantName);
-    }, [ localParticipantName ]);
+    // Both moderators and non-moderators can navigate between picker and
+    // iframe via the back button. Non-moderators picking a different board
+    // only affects their local view (no metadata broadcast). If the moderator
+    // later picks another board, the [boardId] effect above snaps everyone
+    // back to that board.
+    // Same gating the legacy iframe used — only render the SDK embed when
+    // we have everything needed to connect. The picker is still shown
+    // otherwise (user must select a board first), so this stays as a
+    // boolean rather than an embed-URL string.
+    const showBoard = !forcePicker && Boolean(collabServerBaseUrl) && Boolean(boardId);
 
     return (
         <div
@@ -171,35 +219,126 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
             {
                 isOpen && (
                     <div className = 'excalidraw-wrapper'>
-                        {/*
-                          * Excalidraw renders a few lvl 2 headings. This is
-                          * quite fortunate, because we actually use lvl 1
-                          * headings to mark the big sections of our app. So make
-                          * sure to mark the Excalidraw context with a lvl 1
-                          * heading before showing the whiteboard.
-                          */
-                            <span
-                                aria-level = { 1 }
-                                className = 'sr-only'
-                                role = 'heading'>
-                                { props.t('whiteboard.accessibilityLabel.heading') }
-                            </span>
+                        <span
+                            aria-level = { 1 }
+                            className = 'sr-only'
+                            role = 'heading'>
+                            { props.t('whiteboard.accessibilityLabel.heading') }
+                        </span>
+                        { showBoard
+                            ? (
+                                <Suspense
+                                    fallback = {
+                                        <div
+                                            style = {{
+                                                height: '100%',
+                                                width: '100%',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: '#9CA3AF',
+                                                fontSize: 13,
+                                                background: '#fff'
+                                            }}>
+                                            Loading whiteboard…
+                                        </div>
+                                    }>
+                                    <div
+                                        style = {{
+                                            height: '100%',
+                                            width: '100%',
+                                            position: 'relative',
+                                            // Clip any SDK content overflow to the whiteboard-container's
+                                            // fixed height. Pencil/Marker Properties panels are taller than
+                                            // the 444px container Jitsi assigns; without this clip, the SDK's
+                                            // floating bottom toolbar gets pushed below the visible area
+                                            // and Jitsi's own toolbox overlaps the canvas. Proper fix lives
+                                            // in the SDK (PropsPanel should scroll internally); this is the
+                                            // host-side safety net.
+                                            overflow: 'hidden'
+                                        }}>
+                                        <WhiteboardEmbed
+                                            autoLeadOnMount = { isLocalModerator }
+                                            boardHeader = {
+                                                <>
+                                                    <button
+                                                        aria-label = 'Back to whiteboard list'
+                                                        onClick = { () => setForcePicker(true) }
+                                                        style = {{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            width: 32,
+                                                            height: 32,
+                                                            borderRadius: 8,
+                                                            background: 'rgba(48,131,239,0.10)',
+                                                            border: 'none',
+                                                            color: '#3083EF',
+                                                            cursor: 'pointer',
+                                                            flexShrink: 0
+                                                        }}>
+                                                        <span style = {{ fontSize: 16, fontWeight: 700, lineHeight: 1 }}>←</span>
+                                                    </button>
+                                                    <div
+                                                        style = {{
+                                                            fontFamily: '"Plus Jakarta Sans", "Poppins", system-ui, sans-serif',
+                                                            fontSize: 13,
+                                                            fontWeight: 600,
+                                                            lineHeight: 1.25,
+                                                            color: '#0F172A',
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                            whiteSpace: 'nowrap',
+                                                            minWidth: 0
+                                                        }}>
+                                                        { boardTitle || 'Whiteboard' }
+                                                    </div>
+                                                </>
+                                            }
+                                            boardId = { boardId! }
+                                            connection = {{
+                                                // REST + WS both target the API host (whiteboard-
+                                                // apiqa.aauti.com), NOT the iframe-page host
+                                                // (whiteboard-qa.aauti.com) — the latter doesn't
+                                                // serve `/api/...` and returns 404 on the embed-gate
+                                                // OPTIONS preflight, which is what was tripping us.
+                                                apiBaseUrl: apiBaseUrl!,
+                                                wsBaseUrl: apiBaseUrl!,
+                                                apiKey: apiKey || ''
+                                            }}
+                                            isRecorder = { isJibriRecorder }
+
+                                            // Force a clean unmount/remount when the board changes,
+                                            // instead of reusing one instance and mutating boardId, so
+                                            // the previous board's socket / Y.Doc / member + presence
+                                            // state is fully torn down — switching across multiple
+                                            // boards can't accumulate stale state. (Alphabetical prop
+                                            // order is enforced by react/jsx-sort-props.)
+                                            key = { boardId }
+                                            onAiGenerate = { handleAiGenerate }
+                                            onError = { handleSdkError }
+                                            style = {{ width: '100%', height: '100%' }}
+                                            user = {{
+                                                id: userId,
+
+                                                // Jibri joins Jitsi unnamed → "Fellow Jitster". Force the
+                                                // recorder's whiteboard name to "Session Recorder" so it's
+                                                // stable even if the SDK's recorder-branch resolution races
+                                                // the iAmRecorder config (which otherwise falls back to the
+                                                // Jitsi display name).
+                                                name: isJibriRecorder ? 'Session Recorder' : localParticipantName,
+                                                avatarUrl: userAvatar || undefined,
+                                                role: 'editor'
+                                            }} />
+                                    </div>
+                                </Suspense>
+                            )
+                            : (
+                                <WhiteboardPicker
+                                    canCreate = { isLocalModerator }
+                                    onSelect = { () => setForcePicker(false) } />
+                            )
                         }
-                        <Suspense fallback = { null }>
-                            <LazyExcalidrawApp
-                                collabDetails = { collabDetails }
-                                collabServerUrl = { collabServerUrl }
-                                excalidraw = {{
-                                    isCollaborating: true,
-                                    langCode: i18next.language,
-                                    theme: 'light',
-                                    UIOptions: storageBackendUrl ? WHITEBOARD_UI_OPTIONS_WITH_IMAGES : WHITEBOARD_UI_OPTIONS
-                                }}
-                                getCollabAPI = { getCollabAPI }
-                                getExcalidrawAPI = { getExcalidrawAPI }
-                                meetingDetails = { meetingDetails }
-                                storageBackendUrl = { storageBackendUrl } />
-                        </Suspense>
                     </div>
                 )}
         </div>

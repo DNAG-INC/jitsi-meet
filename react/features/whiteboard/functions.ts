@@ -1,16 +1,82 @@
+// @ts-expect-error
+import jwtDecode from 'jwt-decode';
 import md5 from 'js-md5';
 
 import { getParticipantCount, getPinnedParticipant } from '../../features/base/participants/functions';
 import { IReduxState } from '../app/types';
 import { getCurrentConference } from '../base/conference/functions';
 import { IWhiteboardConfig } from '../base/config/configType';
-import { getRemoteParticipants, isLocalParticipantModerator } from '../base/participants/functions';
+import { getRemoteParticipants } from '../base/participants/functions';
 import { encodeToBase64URL } from '../base/util/httpUtils';
 import { appendURLHashParam, appendURLParam, getBackendSafePath } from '../base/util/uri';
 import { getCurrentRoomId, isInBreakoutRoom } from '../breakout-rooms/functions';
 
 import { MIN_USER_LIMIT, USER_LIMIT_THRESHOLD, WHITEBOARD_ID, WHITEBOARD_PATH_NAME } from './constants';
 import { IWhiteboardState } from './reducer';
+
+/**
+ * Pulls AAuti-specific WaveBook claims from the JWT custom metadata.
+ * AAuti's Jitsi launch must mint a JWT with:
+ *   {
+ *     context: {
+ *       user: { id, name },
+ *       metadata: {
+ *         sessionId, userRole, category, subCategory, instituteId
+ *       }
+ *     }
+ *   }
+ * Returns null if no JWT or decode failure. Picker/Whiteboard fall back to
+ * config.whiteboard.testXxx values for local dev.
+ */
+export interface IWaveBookMember {
+
+    /**
+     * AAuti profile image URL, populated by the backend's JWT mint
+     * (generateJwtTokenForJitsi). Forwarded into the WaveBook board
+     * create payload so the Members panel shows real photos.
+     */
+    avatar?: string;
+    name: string;
+    role: 'editor' | 'viewer';
+    userId: string;
+}
+
+export interface IWaveBookJwtContext {
+    category?: string;
+    instituteId?: string;
+    members?: IWaveBookMember[];
+    sessionId?: string;
+    subCategory?: string;
+    userId?: string;
+    userName?: string;
+    userRole?: string;
+}
+
+export const getWaveBookJwtContext = (state: IReduxState): IWaveBookJwtContext | null => {
+    const jwt = state['features/base/jwt']?.jwt;
+
+    if (!jwt) {
+        return null;
+    }
+    try {
+        const payload: any = jwtDecode(jwt);
+        const ctx = payload?.context || {};
+        const meta = ctx.metadata || {};
+
+        return {
+            userId: ctx.user?.id,
+            userName: ctx.user?.name,
+            sessionId: meta.sessionId,
+            userRole: meta.userRole,
+            category: meta.category,
+            subCategory: meta.subCategory,
+            instituteId: meta.instituteId,
+            members: Array.isArray(meta.members) ? meta.members : []
+        };
+    } catch {
+        return null;
+    }
+};
 
 const getWhiteboardState = (state: IReduxState): IWhiteboardState => state['features/whiteboard'];
 
@@ -74,14 +140,19 @@ export const isWhiteboardOpen = (state: IReduxState): boolean => {
 };
 
 /**
- * Indicates whether the whiteboard button is visible.
+ * Indicates whether the whiteboard show/hide button is visible.
+ *
+ * AAuti policy: every participant can toggle their own whiteboard panel.
+ * Non-moderators see the picker and existing boards but no "Add Whiteboard"
+ * card (gated in WhiteboardPicker via the canCreate prop). Only the
+ * moderator's pick broadcasts via conference metadata; non-mod picks are
+ * local-only.
  *
  * @param {IReduxState} state - The state from the Redux store.
  * @returns {boolean}
  */
 export const isWhiteboardButtonVisible = (state: IReduxState): boolean =>
-    isWhiteboardEnabled(state)
-    && (isLocalParticipantModerator(state) || isWhiteboardOpen(state) || hasCollabDetails(state));
+    isWhiteboardEnabled(state);
 
 /**
  * Indicates whether the whiteboard is present as a meeting participant.
@@ -144,13 +215,17 @@ export const isWhiteboardVisible = (state: IReduxState): boolean =>
     || state['features/large-video'].participantId === WHITEBOARD_ID;
 
 /**
-* Indicates whether the whiteboard is accessible to a participant that has a moderator role.
-*
-* @param {IReduxState} state - The state from the Redux store.
-* @returns {boolean}
-*/
+ * Indicates whether the local participant can toggle the whiteboard.
+ *
+ * AAuti policy: any participant can open/hide their own whiteboard panel.
+ * Moderator-only actions (board pick broadcast, broadcast-to-all hide) are
+ * gated separately at their call sites.
+ *
+ * @param {IReduxState} state - The state from the Redux store.
+ * @returns {boolean}
+ */
 export const isWhiteboardAllowed = (state: IReduxState): boolean =>
-    isWhiteboardEnabled(state) && isLocalParticipantModerator(state);
+    isWhiteboardEnabled(state);
 
 /**
  * Whether to enforce the whiteboard user limit.

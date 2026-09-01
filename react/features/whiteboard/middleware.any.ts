@@ -40,12 +40,19 @@ MiddlewareRegistry.register((store: IStore) => next => action => {
     }
 
     case UPDATE_CONFERENCE_METADATA: {
-        const { metadata } = action;
+        const wb = action.metadata?.[WHITEBOARD_ID];
 
-        if (metadata?.[WHITEBOARD_ID]) {
+        if (wb?.closed) {
+            // Moderator hid the whiteboard for the room. Reset before flipping
+            // isOpen=false so middleware.web.ts re-entry sees empty collab
+            // details and skips the re-broadcast guard.
+            store.dispatch(resetWhiteboard());
+            store.dispatch(setWhiteboardOpen(false));
+        } else if (wb?.collabDetails?.roomId) {
             store.dispatch(setupWhiteboard({
-                collabDetails: metadata[WHITEBOARD_ID].collabDetails,
-                collabServerUrl: generateCollabServerUrl(store.getState())
+                collabDetails: wb.collabDetails,
+                collabServerUrl: generateCollabServerUrl(store.getState()),
+                boardTitle: wb.boardTitle
             }));
 
             // Prevents a second navigate() call on mobile

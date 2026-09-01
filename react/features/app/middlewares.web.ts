@@ -10,6 +10,7 @@ import '../e2ee/middleware';
 import '../external-api/middleware';
 import '../keyboard-shortcuts/middleware';
 import '../multi-screen/middleware.web';
+import '../meeting-duration/middleware.web';
 import '../no-audio-signal/middleware';
 import '../notifications/middleware';
 import '../noise-detection/middleware';

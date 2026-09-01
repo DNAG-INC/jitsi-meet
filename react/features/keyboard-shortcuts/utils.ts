@@ -6,6 +6,12 @@
 const _elementsBlacklist = [
     'input',
     'textarea',
+
+    // contentEditable rich-text hosts (e.g. the whiteboard SDK's text tool).
+    // Without this, typing letters that map to global shortcuts (m, d, r, w…)
+    // leaks into mute / screenshare / raise-hand / whiteboard-toggle while the
+    // user is writing. Excludes `=false` so non-editable nodes don't match.
+    '[contenteditable]:not([contenteditable="false"])',
     'button',
     '[role=button]',
     '[role=menuitem]',
@@ -18,12 +24,49 @@ const _elementsBlacklist = [
 ];
 
 /**
-* Returns the currently focused element if it is not blacklisted.
+* Returns the currently focused element when it is one the keyboard should own
+* (text fields, contentEditable, buttons, etc.) — so global shortcuts are
+* suppressed while the user is typing/interacting there. Returns null otherwise.
 *
-* @returns {HTMLElement|null} - The currently focused element.
+* Resolves the *actual* focused element rather than relying on a `:focus`
+* selector against the top document: it descends through open shadow roots and
+* same-origin iframes (where the outer document's focus is only the host /
+* <iframe> element, not the inner field), then tests {@code isContentEditable}
+* (true for inherited/nested editable regions the attribute selector misses —
+* e.g. the whiteboard SDK's text tool and comment box) before the blacklist.
+*
+* @returns {HTMLElement|null} - The focused element to defer to, or null.
 */
-export const getPriorityFocusedElement = (): HTMLElement | null =>
-    document.querySelector(`:focus:is(${_elementsBlacklist.join(',')})`);
+export const getPriorityFocusedElement = (): HTMLElement | null => {
+    let el: Element | null = document.activeElement;
+
+    // Descend into open shadow roots — a focused element inside a shadow tree
+    // reports only the host to the outer document's `:focus`/activeElement.
+    while (el?.shadowRoot?.activeElement) {
+        el = el.shadowRoot.activeElement;
+    }
+
+    // Same-origin iframe: the real focus lives in its document, while the outer
+    // page only sees the <iframe> element as focused.
+    if (el instanceof HTMLIFrameElement) {
+        try {
+            el = el.contentDocument?.activeElement ?? el;
+        } catch {
+            // Cross-origin — inaccessible; treat the iframe element as focused.
+        }
+    }
+
+    if (!el) {
+        return null;
+    }
+
+    // contentEditable (incl. inherited) — the whiteboard text tool + comment box.
+    if ((el as HTMLElement).isContentEditable) {
+        return el as HTMLElement;
+    }
+
+    return el.matches(_elementsBlacklist.join(',')) ? el as HTMLElement : null;
+};
 
 /**
 * Returns the keyboard key from a KeyboardEvent.
