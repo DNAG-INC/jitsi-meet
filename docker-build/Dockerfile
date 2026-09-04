@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# AAuti WaveBook Jitsi web - drop-in replacement for jitsi/web:stable-10741
+# AAuti WaveBook Jitsi web - drop-in replacement for ghcr.io/jitsi/web:stable-11146-2
 # with the custom whiteboard module compiled in from this fork.
 #
 # Layout mirrors upstream jitsi/docker-jitsi-meet/web/. Stage 1 builds the
@@ -16,9 +16,9 @@
 ############################
 # Global ARGs - declared before any FROM so they are usable in every FROM line.
 ARG NODE_VERSION=24
-ARG JITSI_REPO=jitsi
-# Match the stable jitsi-meet release this fork is built on (custom/10741-whiteboard).
-ARG BASE_TAG=stable-10741
+ARG JITSI_REPO=ghcr.io/jitsi
+# Match the stable jitsi-meet release this fork is built on (custom/11146-whiteboard).
+ARG BASE_TAG=stable-11146-2
 
 FROM node:${NODE_VERSION}-bookworm-slim AS builder
 
@@ -66,7 +66,7 @@ RUN make compile && make deploy
 FROM ${JITSI_REPO}/base:${BASE_TAG}
 
 LABEL org.opencontainers.image.title="aauti-jitsi-web" \
-      org.opencontainers.image.description="AAuti WaveBook Jitsi Meet web frontend (custom/10741-whiteboard) - drop-in replacement for jitsi/web:stable-10741" \
+      org.opencontainers.image.description="AAuti WaveBook Jitsi Meet web frontend (custom/11146-whiteboard) - drop-in replacement for ghcr.io/jitsi/web:stable-11146-2" \
       org.opencontainers.image.source="https://github.com/DNAG-INC/jitsi-meet"
 
 # acme.sh for Let's Encrypt support (same path as upstream)
