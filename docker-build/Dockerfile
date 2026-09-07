@@ -76,7 +76,11 @@ ADD https://raw.githubusercontent.com/acmesh-official/acme.sh/3.0.7/acme.sh /opt
 COPY docker-build/rootfs/ /
 
 # Same package set as upstream jitsi/web, MINUS jitsi-meet-web (we ship our own).
-RUN apt-dpkg-wrap apt-get update \
+# ghcr.io/jitsi/base:stable-11146-2 ships apt 3.0.3, which (unlike the 2.6.1 on
+# stable-10741) refuses to auto-create /var/lib/apt/lists/partial and hard-fails
+# "List directory ... is missing" on the first apt-get update. Recreate it first.
+RUN mkdir -p /var/lib/apt/lists/partial \
+ && apt-dpkg-wrap apt-get update \
  && apt-dpkg-wrap apt-get install -y dnsutils cron nginx-extras socat curl jq \
  && rm -f /etc/nginx/conf.d/default.conf \
  && apt-cleanup
