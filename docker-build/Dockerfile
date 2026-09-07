@@ -54,7 +54,8 @@ RUN printf '%s\n%s\n%s\n' \
       > .npmrc \
  && printf '//pkgs.dev.azure.com/aauti/_packaging/aauti/npm/registry/:_authToken=%s\n' \
       "$AZURE_DEVOPS_PAT_TOKEN" >> .npmrc \
- && npm ci --no-audit --no-fund --legacy-peer-deps \
+ && npm ci --no-audit --no-fund --legacy-peer-deps --ignore-scripts \
+ && npx patch-package --error-on-fail \
  && rm -f .npmrc
 
 COPY . .
