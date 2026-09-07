@@ -111,16 +111,17 @@ COPY --from=builder /src/resources/robots.txt  /usr/share/jitsi-meet/
 RUN mv /usr/share/jitsi-meet/interface_config.js /defaults/
 
 # Strip any CRLF line endings (Windows git checkouts can introduce them) and
-# normalise file permissions. In s6-overlay v2:
-#   - cont-init.d scripts must NOT be executable (s6 reads them and pipes to
-#     a shell). With +x the kernel-exec path goes through with-contenv ->
-#     s6-exec which fails the PATH lookup of 'bash'.
-#   - services.d/*/run scripts MUST be executable so s6 can supervise them.
+# normalise file permissions. stable-11146-2 runs s6-overlay v3 (stable-10741
+# was v2): v3's cont-init execs each /etc/cont-init.d/* script directly, so it
+# must be executable (v2 instead sourced non-executable scripts - +x used to
+# break the with-contenv -> s6-exec PATH lookup there, but that no longer
+# applies). services.d/*/run scripts must stay executable so s6 can supervise
+# them, as before.
 # We force-set perms here because the Windows checkout doesn't preserve them
 # reliably across git clone / cp.
 RUN find /defaults /etc/cont-init.d /etc/services.d -type f -exec sed -i 's/\r$//' {} + \
- && chmod 644 /etc/cont-init.d/10-config \
- && chmod 755 /etc/services.d/nginx/run \
+ && chmod 755 /etc/cont-init.d/10-config \
+              /etc/services.d/nginx/run \
               /etc/services.d/cron/run \
               /etc/services.d/jaas-account/run
 
