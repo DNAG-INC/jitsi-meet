@@ -65,6 +65,11 @@ RUN make compile && make deploy
 ############################
 FROM ${JITSI_REPO}/base:${BASE_TAG}
 
+# stable-11146-2 sets a non-root default user (Config.User=s6, uid 1000),
+# unlike stable-10741 (root). Every RUN/COPY below needs root (apt-get,
+# writing under /usr/share, /etc, /var/lib) exactly as it did on 10741.
+USER root
+
 LABEL org.opencontainers.image.title="aauti-jitsi-web" \
       org.opencontainers.image.description="AAuti WaveBook Jitsi Meet web frontend (custom/11146-whiteboard) - drop-in replacement for ghcr.io/jitsi/web:stable-11146-2" \
       org.opencontainers.image.source="https://github.com/DNAG-INC/jitsi-meet"
