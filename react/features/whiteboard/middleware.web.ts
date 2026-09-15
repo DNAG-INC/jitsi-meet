@@ -10,8 +10,6 @@ import { FakeParticipant } from '../base/participants/types';
 import MiddlewareRegistry from '../base/redux/MiddlewareRegistry';
 import { addStageParticipant } from '../filmstrip/actions.web';
 import { isStageFilmstripAvailable } from '../filmstrip/functions.web';
-import { showErrorNotification } from '../notifications/actions';
-import { NOTIFICATION_TIMEOUT_TYPE } from '../notifications/constants';
 
 import { RESET_WHITEBOARD, SET_WHITEBOARD_OPEN } from './actionTypes';
 import {
@@ -23,7 +21,6 @@ import WhiteboardLimitDialog from './components/web/WhiteboardLimitDialog';
 import { WHITEBOARD_ID, WHITEBOARD_PARTICIPANT_NAME } from './constants';
 import {
     getCollabDetails,
-    getCollabServerUrl,
     isWhiteboardPresent,
     shouldEnforceUserLimit,
     shouldNotifyUserLimit
@@ -69,7 +66,6 @@ MiddlewareRegistry.register((store: IStore) => (next: Function) => (action: AnyA
     switch (action.type) {
     case SET_WHITEBOARD_OPEN: {
         const existingCollabDetails = getCollabDetails(state);
-        const collabServerUrl = getCollabServerUrl(state);
         const enforceUserLimit = shouldEnforceUserLimit(state);
         const notifyUserLimit = shouldNotifyUserLimit(state);
         const iAmRecorder = Boolean(state['features/base/config'].iAmRecorder);
@@ -96,28 +92,14 @@ MiddlewareRegistry.register((store: IStore) => (next: Function) => (action: AnyA
                 return next(action);
             }
 
-            // roomKey is intentionally not validated. It is an Excalidraw concept
-            // (the encryption key carried in the collab URL fragment); WaveBook
-            // identifies a board by roomId alone and authenticates with the tenant
-            // API key, so selectWhiteboardBoard always sets roomKey: ''. Upstream's
-            // check arrived with the stable-11146 merge and blocked every open -
-            // including the moderator's broadcast reaching remote participants.
-            if (!existingCollabDetails.roomId || !collabServerUrl) {
-                const missing = [
-                    !existingCollabDetails.roomId && 'roomId',
-                    !collabServerUrl && 'collabServerUrl'
-                ].filter(Boolean).join(', ');
-
-                logger.error(`Whiteboard open failed, missing collaboration data: ${missing}`);
-
-                if (action.userInitiated) {
-                    dispatch(showErrorNotification({
-                        titleKey: 'info.noWhiteboard'
-                    }, NOTIFICATION_TIMEOUT_TYPE.MEDIUM));
-                }
-
-                return;
-            }
+            // No collab-data guard here. Upstream added one with the
+            // stable-11146 merge, but it assumes the Excalidraw flow where a
+            // board always exists before the panel opens. WaveBook opens the
+            // panel first and picks a board second: setNewWhiteboardOpen
+            // deliberately stores roomId: '' and collabServerUrl: '' so the
+            // picker renders. Those empty values are a valid state, not a
+            // failure, and validating them here blocked every open and showed
+            // "Could not load the whiteboard."
             if (enforceUserLimit) {
                 dispatch(restrictWhiteboard());
 
