@@ -96,10 +96,15 @@ MiddlewareRegistry.register((store: IStore) => (next: Function) => (action: AnyA
                 return next(action);
             }
 
-            if (!existingCollabDetails.roomId || !existingCollabDetails.roomKey || !collabServerUrl) {
+            // roomKey is intentionally not validated. It is an Excalidraw concept
+            // (the encryption key carried in the collab URL fragment); WaveBook
+            // identifies a board by roomId alone and authenticates with the tenant
+            // API key, so selectWhiteboardBoard always sets roomKey: ''. Upstream's
+            // check arrived with the stable-11146 merge and blocked every open -
+            // including the moderator's broadcast reaching remote participants.
+            if (!existingCollabDetails.roomId || !collabServerUrl) {
                 const missing = [
                     !existingCollabDetails.roomId && 'roomId',
-                    !existingCollabDetails.roomKey && 'roomKey',
                     !collabServerUrl && 'collabServerUrl'
                 ].filter(Boolean).join(', ');
 
