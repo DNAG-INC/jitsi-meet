@@ -68,12 +68,11 @@ MiddlewareRegistry.register((store: IStore) => (next: Function) => (action: AnyA
         const existingCollabDetails = getCollabDetails(state);
         const enforceUserLimit = shouldEnforceUserLimit(state);
         const notifyUserLimit = shouldNotifyUserLimit(state);
-        const iAmRecorder = Boolean(state['features/base/config'].iAmRecorder);
 
         const iAmSipGateway = Boolean(state['features/base/config'].iAmSipGateway);
 
-        if ((iAmRecorder || iAmSipGateway) && action.isOpen) {
-            logger.info('Whiteboard open skipped, not supported in recorder mode');
+        if (iAmSipGateway && action.isOpen) {
+            logger.info('Whiteboard open skipped, not supported on the SIP gateway');
 
             return next(action);
         }

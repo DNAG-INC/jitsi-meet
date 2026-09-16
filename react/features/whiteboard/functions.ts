@@ -129,15 +129,11 @@ export const isWhiteboardEnabled = (state: IReduxState): boolean =>
  * @param {IReduxState} state - The state from the Redux store.
  * @returns {boolean}
  */
-export const isWhiteboardOpen = (state: IReduxState): boolean => {
-    const { iAmRecorder, iAmSipGateway } = state['features/base/config'];
-
-    if (iAmRecorder || iAmSipGateway) {
-        return false;
-    }
-
-    return getWhiteboardState(state).isOpen;
-};
+// Deliberately has no iAmRecorder/iAmSipGateway short-circuit. Upstream added
+// one with the stable-11146 merge because they do not record the Excalidraw
+// whiteboard; we do. Returning false for Jibri stopped the panel rendering at
+// all, so recordings showed only the camera - no blank panel, no error.
+export const isWhiteboardOpen = (state: IReduxState): boolean => getWhiteboardState(state).isOpen;
 
 /**
  * Indicates whether the whiteboard show/hide button is visible.
