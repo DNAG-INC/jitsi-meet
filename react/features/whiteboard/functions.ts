@@ -21,7 +21,8 @@ import { IWhiteboardState } from './reducer';
  *     context: {
  *       user: { id, name },
  *       metadata: {
- *         sessionId, userRole, category, subCategory, instituteId
+ *         sessionId, sessionTitle, userRole, category, subCategory,
+ *         instituteId
  *       }
  *     }
  *   }
@@ -46,6 +47,13 @@ export interface IWaveBookJwtContext {
     instituteId?: string;
     members?: IWaveBookMember[];
     sessionId?: string;
+
+    /**
+     * Session name. Used to title a board the whiteboard service
+     * auto-provisions for an empty session, so it reads as the class
+     * rather than a generic fallback in an instructor's library.
+     */
+    sessionTitle?: string;
     subCategory?: string;
     userId?: string;
     userName?: string;
@@ -67,6 +75,7 @@ export const getWaveBookJwtContext = (state: IReduxState): IWaveBookJwtContext |
             userId: ctx.user?.id,
             userName: ctx.user?.name,
             sessionId: meta.sessionId,
+            sessionTitle: meta.sessionTitle,
             userRole: meta.userRole,
             category: meta.category,
             subCategory: meta.subCategory,
@@ -76,6 +85,42 @@ export const getWaveBookJwtContext = (state: IReduxState): IWaveBookJwtContext |
     } catch {
         return null;
     }
+};
+
+/**
+ * Role asserted to the whiteboard service on the caller's behalf.
+ *
+ * The service auto-provisions a session's first board for the teaching side
+ * only, but it cannot work out who that is - it receives just x-user-id and
+ * x-user-name.
+ *
+ * Moderator standing in the call is AUTHORITATIVE and is checked first. The
+ * two signals do not cover the same people: getJoinInfo grants moderator to
+ * `isHost`, which includes a trial co-organizer, while the userRole claim
+ * marks only SP / co-instructor / institute admin / Aauti staff as
+ * 'instructor'. A co-organizer therefore arrives as a moderator carrying
+ * userRole 'subscriber' - reading the claim first would deny the very person
+ * running the call the board that call is about to need.
+ *
+ * Non-moderators pass their claim through unchanged (typically 'subscriber'),
+ * which the service does not treat as staff.
+ *
+ * Lives here beside getWaveBookJwtContext so the role vocabulary has one home
+ * rather than being spelled out in the picker.
+ *
+ * @param {IWaveBookJwtContext | null} jwtContext - Decoded WaveBook claims.
+ * @param {boolean} isModerator - Whether the local participant is a moderator.
+ * @returns {string | undefined}
+ */
+export const resolveWhiteboardCallerRole = (
+        jwtContext: IWaveBookJwtContext | null,
+        isModerator: boolean
+): string | undefined => {
+    if (isModerator) {
+        return jwtContext?.userRole === 'instructor' ? 'instructor' : 'moderator';
+    }
+
+    return jwtContext?.userRole;
 };
 
 const getWhiteboardState = (state: IReduxState): IWhiteboardState => state['features/whiteboard'];

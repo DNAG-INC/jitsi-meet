@@ -5,7 +5,7 @@ import { IReduxState } from '../../../app/types';
 import { getLocalParticipant, getRemoteParticipants } from '../../../base/participants/functions';
 import { IParticipant } from '../../../base/participants/types';
 import { selectWhiteboardBoard } from '../../actions.web';
-import { IWaveBookMember, getWaveBookJwtContext } from '../../functions';
+import { IWaveBookMember, getWaveBookJwtContext, resolveWhiteboardCallerRole } from '../../functions';
 
 interface IBoard {
     _id?: string;
@@ -87,8 +87,10 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
     const apiKey = whiteboardConfig.apiKey;
     // Per-user/session context comes from JWT custom claims minted by the
     // AAuti backend: context.user.{id,name} + context.metadata.{sessionId,
-    // category, subCategory, instituteId}. See getWaveBookJwtContext.
+    // sessionTitle, userRole, category, subCategory, instituteId, members}.
+    // See getWaveBookJwtContext.
     const sessionId = jwtCtx?.sessionId;
+    const sessionTitle = jwtCtx?.sessionTitle;
     const userId = jwtCtx?.userId || localParticipant?.id || '';
     const userName = jwtCtx?.userName || localParticipant?.name || 'User';
     const category = jwtCtx?.category;
@@ -104,12 +106,16 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
     const [ newBoardName, setNewBoardName ] = useState('');
     const [ submitting, setSubmitting ] = useState(false);
 
+    // Resolved in functions.ts so the role vocabulary has a single home.
+    const boardRole = resolveWhiteboardCallerRole(jwtCtx, canCreate);
+
     const headers = useMemo(() => ({
         'x-api-key': apiKey || '',
         'x-user-id': userId,
         'x-user-name': userName,
+        ...(boardRole ? { 'x-user-role': boardRole } : {}),
         'Content-Type': 'application/json'
-    }), [ apiKey, userId, userName ]);
+    }), [ apiKey, userId, userName, boardRole ]);
 
     const loadBoards = useCallback(async () => {
         if (!apiUrl || !apiKey) {
@@ -128,6 +134,24 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
             if (sessionId) {
                 params.set('meta', `sessionId:${sessionId}`);
             }
+
+            // Tags for a board the service may auto-provision on this call
+            // (empty session + staff role). These are seed-only: they tag the
+            // new board without filtering the listing. Deliberately NOT the
+            // plain `instituteId` param, which DOES filter - passing that here
+            // would hide every board created before institute tagging existed.
+            if (category) {
+                params.set('seedCategory', category);
+            }
+            if (subCategory) {
+                params.set('seedSubCategory', subCategory);
+            }
+            if (instituteId) {
+                params.set('seedInstituteId', instituteId);
+            }
+            if (sessionTitle) {
+                params.set('seedTitle', sessionTitle);
+            }
             const qs = params.toString() ? `?${params.toString()}` : '';
             const res = await fetch(`${apiUrl.replace(/\/$/, '')}/api/whiteboard/getAll${qs}`, { headers });
             const json = await res.json();
@@ -139,7 +163,7 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
         } finally {
             setLoading(false);
         }
-    }, [ apiUrl, apiKey, sessionId, headers ]);
+    }, [ apiUrl, apiKey, sessionId, sessionTitle, category, subCategory, instituteId, headers ]);
 
     useEffect(() => {
         loadBoards();
