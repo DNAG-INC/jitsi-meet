@@ -97,6 +97,16 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
     const apiBaseUrl = whiteboard?.apiUrl || collabServerBaseUrl;
     const apiKey = whiteboard?.apiKey;
 
+    // Media service for images and documents added to the board. Omitted
+    // entirely when no URL is configured, so the SDK reports "uploads are not
+    // set up" rather than silently embedding a base64 copy of every image.
+    const media = whiteboard?.uploadUrl
+        ? {
+            uploadMediaUrl: whiteboard.uploadUrl,
+            uploadMediaApiKey: whiteboard.uploadApiKey || ''
+        }
+        : undefined;
+
     // Jibri detection — primary signal is the canonical `iAmRecorder`
     // config flag that Jibri injects into its own Chrome session via
     // URL hash (Jitsi's standard way to identify recorder sessions,
@@ -304,7 +314,8 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                                 // OPTIONS preflight, which is what was tripping us.
                                                 apiBaseUrl: apiBaseUrl!,
                                                 wsBaseUrl: apiBaseUrl!,
-                                                apiKey: apiKey || ''
+                                                apiKey: apiKey || '',
+                                                media
                                             }}
                                             isRecorder = { isJibriRecorder }
 

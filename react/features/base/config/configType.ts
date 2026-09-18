@@ -147,6 +147,18 @@ export interface IWhiteboardConfig {
     collabServerBaseUrl?: string;
     enabled?: boolean;
     limitUrl?: string;
+
+    /**
+     * Media-upload service the board sends images and documents to, set by
+     * the Helm `_custom_config_js` block alongside `apiUrl`/`apiKey`.
+     *
+     * Without these the SDK has no upload target: documents are refused
+     * outright, and images used to fall back to an inline base64 data URL —
+     * which looked like success while embedding the whole picture in the
+     * board and broadcasting it to every participant.
+     */
+    uploadApiKey?: string;
+    uploadUrl?: string;
     /**
      * When true, the local SDK enters recorder mode — used by Jibri's
      * headless Chrome only. Set by the Helm `_custom_config_js` block
