@@ -37,3 +37,19 @@
         }
     }
 }
+
+/* Shown in place of the board when the whiteboard subtree throws. Matches the
+   lazy-load fallback's look so a failure reads as part of the panel rather
+   than a broken page. The conference itself keeps running - see
+   WhiteboardErrorBoundary. */
+.whiteboard-error {
+    align-items: center;
+    background: #fff;
+    color: #9ca3af;
+    display: flex;
+    font-size: 13px;
+    height: 100%;
+    justify-content: center;
+    text-align: center;
+    width: 100%;
+}

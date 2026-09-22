@@ -48,6 +48,8 @@ import {
     isWhiteboardVisible
 } from '../../functions';
 
+import NoWhiteboardError from './NoWhiteboardError';
+import WhiteboardErrorBoundary from './WhiteboardErrorBoundary';
 import WhiteboardPicker from './WhiteboardPicker';
 
 /**
@@ -237,112 +239,120 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                         </span>
                         { showBoard
                             ? (
-                                <Suspense
-                                    fallback = {
+                                // Guards the whole board subtree, the lazy
+                                // chunk load included. Keyed on boardId so
+                                // picking another board clears a previous
+                                // failure and retries.
+                                <WhiteboardErrorBoundary
+                                    fallback = { <NoWhiteboardError className = 'whiteboard-error' /> }
+                                    key = { boardId }>
+                                    <Suspense
+                                        fallback = {
+                                            <div
+                                                style = {{
+                                                    height: '100%',
+                                                    width: '100%',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    color: '#9CA3AF',
+                                                    fontSize: 13,
+                                                    background: '#fff'
+                                                }}>
+                                                Loading whiteboard…
+                                            </div>
+                                        }>
                                         <div
                                             style = {{
                                                 height: '100%',
                                                 width: '100%',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                color: '#9CA3AF',
-                                                fontSize: 13,
-                                                background: '#fff'
+                                                position: 'relative',
+                                                // Clip any SDK content overflow to the whiteboard-container's
+                                                // fixed height. Pencil/Marker Properties panels are taller than
+                                                // the 444px container Jitsi assigns; without this clip, the SDK's
+                                                // floating bottom toolbar gets pushed below the visible area
+                                                // and Jitsi's own toolbox overlaps the canvas. Proper fix lives
+                                                // in the SDK (PropsPanel should scroll internally); this is the
+                                                // host-side safety net.
+                                                overflow: 'hidden'
                                             }}>
-                                            Loading whiteboard…
+                                            <WhiteboardEmbed
+                                                autoLeadOnMount = { isLocalModerator }
+                                                boardHeader = {
+                                                    <>
+                                                        <button
+                                                            aria-label = 'Back to whiteboard list'
+                                                            onClick = { () => setForcePicker(true) }
+                                                            style = {{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                width: 32,
+                                                                height: 32,
+                                                                borderRadius: 8,
+                                                                background: 'rgba(48,131,239,0.10)',
+                                                                border: 'none',
+                                                                color: '#3083EF',
+                                                                cursor: 'pointer',
+                                                                flexShrink: 0
+                                                            }}>
+                                                            <span style = {{ fontSize: 16, fontWeight: 700, lineHeight: 1 }}>←</span>
+                                                        </button>
+                                                        <div
+                                                            style = {{
+                                                                fontFamily: '"Plus Jakarta Sans", "Poppins", system-ui, sans-serif',
+                                                                fontSize: 13,
+                                                                fontWeight: 600,
+                                                                lineHeight: 1.25,
+                                                                color: '#0F172A',
+                                                                overflow: 'hidden',
+                                                                textOverflow: 'ellipsis',
+                                                                whiteSpace: 'nowrap',
+                                                                minWidth: 0
+                                                            }}>
+                                                            { boardTitle || 'Whiteboard' }
+                                                        </div>
+                                                    </>
+                                                }
+                                                boardId = { boardId! }
+                                                connection = {{
+                                                    // REST + WS both target the API host (whiteboard-
+                                                    // apiqa.aauti.com), NOT the iframe-page host
+                                                    // (whiteboard-qa.aauti.com) — the latter doesn't
+                                                    // serve `/api/...` and returns 404 on the embed-gate
+                                                    // OPTIONS preflight, which is what was tripping us.
+                                                    apiBaseUrl: apiBaseUrl!,
+                                                    wsBaseUrl: apiBaseUrl!,
+                                                    apiKey: apiKey || '',
+                                                    media
+                                                }}
+                                                isRecorder = { isJibriRecorder }
+
+                                                // Force a clean unmount/remount when the board changes,
+                                                // instead of reusing one instance and mutating boardId, so
+                                                // the previous board's socket / Y.Doc / member + presence
+                                                // state is fully torn down — switching across multiple
+                                                // boards can't accumulate stale state. (Alphabetical prop
+                                                // order is enforced by react/jsx-sort-props.)
+                                                key = { boardId }
+                                                onAiGenerate = { handleAiGenerate }
+                                                onError = { handleSdkError }
+                                                style = {{ width: '100%', height: '100%' }}
+                                                user = {{
+                                                    id: userId,
+
+                                                    // Jibri joins Jitsi unnamed → "Fellow Jitster". Force the
+                                                    // recorder's whiteboard name to "Session Recorder" so it's
+                                                    // stable even if the SDK's recorder-branch resolution races
+                                                    // the iAmRecorder config (which otherwise falls back to the
+                                                    // Jitsi display name).
+                                                    name: isJibriRecorder ? 'Session Recorder' : localParticipantName,
+                                                    avatarUrl: userAvatar || undefined,
+                                                    role: 'editor'
+                                                }} />
                                         </div>
-                                    }>
-                                    <div
-                                        style = {{
-                                            height: '100%',
-                                            width: '100%',
-                                            position: 'relative',
-                                            // Clip any SDK content overflow to the whiteboard-container's
-                                            // fixed height. Pencil/Marker Properties panels are taller than
-                                            // the 444px container Jitsi assigns; without this clip, the SDK's
-                                            // floating bottom toolbar gets pushed below the visible area
-                                            // and Jitsi's own toolbox overlaps the canvas. Proper fix lives
-                                            // in the SDK (PropsPanel should scroll internally); this is the
-                                            // host-side safety net.
-                                            overflow: 'hidden'
-                                        }}>
-                                        <WhiteboardEmbed
-                                            autoLeadOnMount = { isLocalModerator }
-                                            boardHeader = {
-                                                <>
-                                                    <button
-                                                        aria-label = 'Back to whiteboard list'
-                                                        onClick = { () => setForcePicker(true) }
-                                                        style = {{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            width: 32,
-                                                            height: 32,
-                                                            borderRadius: 8,
-                                                            background: 'rgba(48,131,239,0.10)',
-                                                            border: 'none',
-                                                            color: '#3083EF',
-                                                            cursor: 'pointer',
-                                                            flexShrink: 0
-                                                        }}>
-                                                        <span style = {{ fontSize: 16, fontWeight: 700, lineHeight: 1 }}>←</span>
-                                                    </button>
-                                                    <div
-                                                        style = {{
-                                                            fontFamily: '"Plus Jakarta Sans", "Poppins", system-ui, sans-serif',
-                                                            fontSize: 13,
-                                                            fontWeight: 600,
-                                                            lineHeight: 1.25,
-                                                            color: '#0F172A',
-                                                            overflow: 'hidden',
-                                                            textOverflow: 'ellipsis',
-                                                            whiteSpace: 'nowrap',
-                                                            minWidth: 0
-                                                        }}>
-                                                        { boardTitle || 'Whiteboard' }
-                                                    </div>
-                                                </>
-                                            }
-                                            boardId = { boardId! }
-                                            connection = {{
-                                                // REST + WS both target the API host (whiteboard-
-                                                // apiqa.aauti.com), NOT the iframe-page host
-                                                // (whiteboard-qa.aauti.com) — the latter doesn't
-                                                // serve `/api/...` and returns 404 on the embed-gate
-                                                // OPTIONS preflight, which is what was tripping us.
-                                                apiBaseUrl: apiBaseUrl!,
-                                                wsBaseUrl: apiBaseUrl!,
-                                                apiKey: apiKey || '',
-                                                media
-                                            }}
-                                            isRecorder = { isJibriRecorder }
-
-                                            // Force a clean unmount/remount when the board changes,
-                                            // instead of reusing one instance and mutating boardId, so
-                                            // the previous board's socket / Y.Doc / member + presence
-                                            // state is fully torn down — switching across multiple
-                                            // boards can't accumulate stale state. (Alphabetical prop
-                                            // order is enforced by react/jsx-sort-props.)
-                                            key = { boardId }
-                                            onAiGenerate = { handleAiGenerate }
-                                            onError = { handleSdkError }
-                                            style = {{ width: '100%', height: '100%' }}
-                                            user = {{
-                                                id: userId,
-
-                                                // Jibri joins Jitsi unnamed → "Fellow Jitster". Force the
-                                                // recorder's whiteboard name to "Session Recorder" so it's
-                                                // stable even if the SDK's recorder-branch resolution races
-                                                // the iAmRecorder config (which otherwise falls back to the
-                                                // Jitsi display name).
-                                                name: isJibriRecorder ? 'Session Recorder' : localParticipantName,
-                                                avatarUrl: userAvatar || undefined,
-                                                role: 'editor'
-                                            }} />
-                                    </div>
-                                </Suspense>
+                                    </Suspense>
+                                </WhiteboardErrorBoundary>
                             )
                             : (
                                 <WhiteboardPicker
