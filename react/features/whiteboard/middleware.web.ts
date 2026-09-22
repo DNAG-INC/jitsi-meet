@@ -1,6 +1,7 @@
 import { AnyAction } from 'redux';
 
 import { IStore } from '../app/types';
+import { CONFERENCE_WILL_LEAVE } from '../base/conference/actionTypes';
 import { getCurrentConference } from '../base/conference/functions';
 import { hideDialog, openDialog } from '../base/dialog/actions';
 import { isDialogOpen } from '../base/dialog/functions';
@@ -136,6 +137,34 @@ MiddlewareRegistry.register((store: IStore) => (next: Function) => (action: AnyA
     case RESET_WHITEBOARD: {
         dispatch(participantLeft(WHITEBOARD_ID, conference, { fakeParticipant: FakeParticipant.Whiteboard }));
         raiseWhiteboardNotification(WhiteboardStatus.RESET);
+
+        break;
+    }
+    case CONFERENCE_WILL_LEAVE: {
+        // A moderator leaving clears the shared board for the room. Nothing
+        // else does: only an explicit close writes `closed: true`, so the
+        // selected board otherwise stayed in the room metadata and every
+        // later rejoin auto-opened it (the metadata listener in
+        // middleware.any.ts flips isOpen as soon as a roomId arrives).
+        //
+        // `isRedirect` marks the moves we come straight back from - breakout
+        // rooms and visitor promotion on web - which must not clear.
+        //
+        // Known false positives, accepted when choosing this over leaving the
+        // board to persist: the visitor max-users restore and the
+        // CONFERENCE_RESTARTED / SHARD_CHANGED forced reload both dispatch
+        // this without `isRedirect`, and beforeunload dispatches it too. So a
+        // moderator who is reloaded by the server, closes the tab, or simply
+        // drops off the network clears the board for everyone still in the
+        // call. They can reopen it; the board itself is not deleted, only
+        // unshared.
+        if (!action.isRedirect
+                && getCollabDetails(state)?.roomId
+                && isLocalParticipantModerator(state)) {
+            const leavingConference = action.conference ?? conference;
+
+            leavingConference?.getMetadataHandler().setMetadata(WHITEBOARD_ID, { closed: true });
+        }
 
         break;
     }
