@@ -270,5 +270,11 @@ export default [
     // visible in AAuti's bundle today, so this is no extra exposure).
     'whiteboard.apiKey',
     'whiteboard.apiUrl',
-    'whiteboard.collabServerBaseUrl'
+    'whiteboard.collabServerBaseUrl',
+    // Media-upload service for board images and documents. Same rationale as
+    // the endpoints above: without a per-environment override these can only
+    // come from the deployment's own config.js, so a client app that wants to
+    // route uploads itself has no way to say so.
+    'whiteboard.uploadApiKey',
+    'whiteboard.uploadUrl'
 ].concat(extraConfigWhitelist).concat(isEmbedded() ? isEmbeddedConfigWhitelist : []);
