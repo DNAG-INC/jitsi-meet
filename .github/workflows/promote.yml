@@ -1,0 +1,91 @@
+name: GCP Promote
+
+run-name: "GCP Promote: jitsi-custom-web → prod #${{ github.run_number }}"
+
+# Only one hop here: sandbox -> prod (this chart has no separate dev/qa/demo,
+# values-sandbox.yaml already covers the whole nonprod environment). Points
+# values-prod.yaml's web.image at the exact same tag values-sandbox.yaml
+# currently uses — no rebuild, no retag, the registry is never touched
+# beyond carrying the source's repository line forward.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gcp-promote-jitsi-custom-web-prod
+  cancel-in-progress: false
+
+env:
+  K8S_REPO: DNAG-PlatformEngineering/aauti-jitsi
+
+jobs:
+  promote:
+    name: sandbox -> prod
+    runs-on: ubuntu-latest
+    # Uncomment to require manual approval before promoting to prod:
+    # environment: production
+    steps:
+      - name: Generate K8s repo token
+        id: k8s-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: 4272093
+          private-key: ${{ secrets.K8S_APP_PRIVATE_KEY }}
+          owner: DNAG-PlatformEngineering
+          repositories: aauti-jitsi
+
+      - name: Checkout aauti-jitsi
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.K8S_REPO }}
+          token: ${{ steps.k8s-token.outputs.token }}
+
+      - name: Read current tag+repository from sandbox (web block only)
+        id: current
+        run: |
+          # tr -d strips any trailing \r — this file is CRLF, and the
+          # repository line's unbounded `.*` capture would otherwise pull a
+          # stray carriage return into the variable and corrupt the line
+          # this gets written into later.
+          FROM_REPO=$(awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f && /^\s*repository:/{print; exit}' values-sandbox.yaml | sed -E 's/.*repository:\s*(.*)/\1/' | tr -d '\r')
+          FROM_TAG=$(awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f && /^\s*tag:/{print; exit}' values-sandbox.yaml | sed -E 's/.*tag:\s*"(.*)"/\1/' | tr -d '\r')
+          if [[ -z "$FROM_REPO" || -z "$FROM_TAG" ]]; then
+            echo "::error::Could not read image repository/tag from values-sandbox.yaml"
+            exit 1
+          fi
+          echo "from_repository=${FROM_REPO}" >> "$GITHUB_OUTPUT"
+          echo "from_tag=${FROM_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Update image tag for prod (web block only)
+        run: |
+          FILE="values-prod.yaml"
+          NEW_REPO="${{ steps.current.outputs.from_repository }}"
+          NEW_TAG="${{ steps.current.outputs.from_tag }}"
+          # This file is CRLF throughout; awk normalizes to LF on output, so
+          # re-add \r before overwriting, otherwise every single line (not
+          # just the 2 we touched) would show as changed in the git diff.
+          awk -v repo="$NEW_REPO" -v tag="$NEW_TAG" '
+            /^web:/ { inweb=1 }
+            inweb && !/^web:/ && /^[A-Za-z]/ { inweb=0 }
+            inweb && /^\s*repository:/ { sub(/repository:.*/, "repository: " repo) }
+            inweb && /^\s*tag:/ { sub(/tag:.*/, "tag: \"" tag "\"") }
+            { sub(/\r$/, ""); print $0 "\r" }
+          ' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE"
+          echo "Updated $FILE (web block):"
+          awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f' "$FILE" | grep -A2 "image:"
+
+      - name: Commit and push
+        run: |
+          FILE="values-prod.yaml"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$FILE"
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Promote jitsi-custom-web to prod: ${{ steps.current.outputs.from_tag }}"
+          git push
