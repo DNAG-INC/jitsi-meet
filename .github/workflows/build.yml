@@ -4,7 +4,7 @@ run-name: "GCP Build: jitsi-custom-web → sandbox #${{ github.run_number }}"
 
 # Builds the custom Jitsi web image (docker-build/Dockerfile, this fork's
 # whiteboard module compiled in) and pushes it to GCP Artifact Registry,
-# then updates values-sandbox.yaml in aauti-jitsi so ArgoCD rolls it out.
+# then updates values.yaml (the base/default file this chart actually deploys from — values-sandbox.yaml exists but is not in use) in aauti-jitsi so ArgoCD rolls it out.
 # Always targets sandbox (= the whole nonprod environment for this chart,
 # there's no separate dev/qa/demo here) — reaching prod happens via
 # promote.yml.
@@ -107,7 +107,7 @@ jobs:
 
       - name: Update image tag (web block only)
         run: |
-          FILE="values-sandbox.yaml"
+          FILE="values.yaml"
           NEW_REPO="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_NAME }}"
           NEW_TAG="${{ needs.build.outputs.tag }}"
           # Scoped to the `web:` top-level block only (from the line that
@@ -130,7 +130,7 @@ jobs:
 
       - name: Commit and push
         run: |
-          FILE="values-sandbox.yaml"
+          FILE="values.yaml"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "$FILE"

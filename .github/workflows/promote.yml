@@ -3,8 +3,8 @@ name: GCP Promote
 run-name: "GCP Promote: jitsi-custom-web → prod #${{ github.run_number }}"
 
 # Only one hop here: sandbox -> prod (this chart has no separate dev/qa/demo,
-# values-sandbox.yaml already covers the whole nonprod environment). Points
-# values-prod.yaml's web.image at the exact same tag values-sandbox.yaml
+# values.yaml already covers the whole nonprod environment). Points
+# values-prod.yaml's web.image at the exact same tag values.yaml
 # currently uses — no rebuild, no retag, the registry is never touched
 # beyond carrying the source's repository line forward.
 
@@ -50,10 +50,10 @@ jobs:
           # repository line's unbounded `.*` capture would otherwise pull a
           # stray carriage return into the variable and corrupt the line
           # this gets written into later.
-          FROM_REPO=$(awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f && /^\s*repository:/{print; exit}' values-sandbox.yaml | sed -E 's/.*repository:\s*(.*)/\1/' | tr -d '\r')
-          FROM_TAG=$(awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f && /^\s*tag:/{print; exit}' values-sandbox.yaml | sed -E 's/.*tag:\s*"(.*)"/\1/' | tr -d '\r')
+          FROM_REPO=$(awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f && /^\s*repository:/{print; exit}' values.yaml | sed -E 's/.*repository:\s*(.*)/\1/' | tr -d '\r')
+          FROM_TAG=$(awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f && /^\s*tag:/{print; exit}' values.yaml | sed -E 's/.*tag:\s*"(.*)"/\1/' | tr -d '\r')
           if [[ -z "$FROM_REPO" || -z "$FROM_TAG" ]]; then
-            echo "::error::Could not read image repository/tag from values-sandbox.yaml"
+            echo "::error::Could not read image repository/tag from values.yaml"
             exit 1
           fi
           echo "from_repository=${FROM_REPO}" >> "$GITHUB_OUTPUT"
