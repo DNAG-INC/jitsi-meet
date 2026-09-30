@@ -9,7 +9,12 @@ run-name: "GCP Promote: jitsi-custom-web → prod #${{ github.run_number }}"
 # beyond carrying the source's repository line forward.
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'This releases to PRODUCTION. Type PROMOTE TO PROD to confirm.'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -28,6 +33,13 @@ jobs:
     # Uncomment to require manual approval before promoting to prod:
     # environment: production
     steps:
+      - name: Verify production confirmation
+        run: |
+          if [[ "${{ inputs.confirm }}" != "PROMOTE TO PROD" ]]; then
+            echo "::error::Confirmation text didn't match — you must type exactly 'PROMOTE TO PROD' to release to production. Nothing was changed."
+            exit 1
+          fi
+
       - name: Generate K8s repo token
         id: k8s-token
         uses: actions/create-github-app-token@v1
