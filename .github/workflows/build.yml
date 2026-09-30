@@ -1,0 +1,142 @@
+name: GCP Build
+
+run-name: "GCP Build: jitsi-custom-web → sandbox #${{ github.run_number }}"
+
+# Builds the custom Jitsi web image (docker-build/Dockerfile, this fork's
+# whiteboard module compiled in) and pushes it to GCP Artifact Registry,
+# then updates values.yaml (the base/default file this chart actually deploys from — values-sandbox.yaml exists but is not in use) in aauti-jitsi so ArgoCD rolls it out.
+# Always targets sandbox (= the whole nonprod environment for this chart,
+# there's no separate dev/qa/demo here) — reaching prod happens via
+# promote.yml.
+#
+# aauti-jitsi is a single Helm chart with many components (web, coturn,
+# prosody, jicofo, jvb, exporters...) all in one values file, unlike
+# aauti-platform-k8s/aauti-media-k8s's one-folder-per-service layout. Only
+# the `web:` block's image is ours to build — every other component's image
+# comes from upstream/public registries and must never be touched here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build from"
+        required: true
+        type: string
+        default: custom/11146-whiteboard
+
+permissions:
+  id-token: write   # required for GCP Workload Identity Federation
+  contents: read
+
+concurrency:
+  group: gcp-build-jitsi-custom-web-sandbox
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT: aauti-jitsi-noprod
+  GCP_REGION: asia-south1
+  ARTIFACT_REPO: aauti-jitsi-docker-build
+  IMAGE_NAME: jitsi-custom-web
+  K8S_REPO: DNAG-PlatformEngineering/aauti-jitsi
+
+jobs:
+  build:
+    name: Build and push image
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Checkout jitsi-meet
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Compute unique image tag
+        id: tag
+        run: |
+          # Plain, globally-unique number (github.run_id is unique across every
+          # workflow in this repo) — run_id stays stable across re-runs.
+          echo "tag=${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker-build/Dockerfile
+          push: true
+          tags: |
+            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha,scope=jitsi-custom-web-sandbox-gcp
+          cache-to: type=gha,mode=max,scope=jitsi-custom-web-sandbox-gcp
+          provenance: false
+
+  release:
+    name: Update image tag in aauti-jitsi
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate K8s repo token
+        id: k8s-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: 4272093
+          private-key: ${{ secrets.K8S_APP_PRIVATE_KEY }}
+          owner: DNAG-PlatformEngineering
+          repositories: aauti-jitsi
+
+      - name: Checkout aauti-jitsi
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.K8S_REPO }}
+          token: ${{ steps.k8s-token.outputs.token }}
+
+      - name: Update image tag (web block only)
+        run: |
+          FILE="values.yaml"
+          NEW_REPO="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_NAME }}"
+          NEW_TAG="${{ needs.build.outputs.tag }}"
+          # Scoped to the `web:` top-level block only (from the line that
+          # starts with "web:" up to but not including the next top-level
+          # key) — this file has many other components (coturn, prosody,
+          # jicofo, jvb, exporters...) each with their own image/repository
+          # line, and those must never be touched by this build.
+          # This file is CRLF throughout; awk normalizes to LF on output, so
+          # re-add \r before overwriting, otherwise every single line (not
+          # just the 2 we touched) would show as changed in the git diff.
+          awk -v repo="$NEW_REPO" -v tag="$NEW_TAG" '
+            /^web:/ { inweb=1 }
+            inweb && !/^web:/ && /^[A-Za-z]/ { inweb=0 }
+            inweb && /^\s*repository:/ { sub(/repository:.*/, "repository: " repo) }
+            inweb && /^\s*tag:/ { sub(/tag:.*/, "tag: \"" tag "\"") }
+            { sub(/\r$/, ""); print $0 "\r" }
+          ' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE"
+          echo "Updated $FILE (web block):"
+          awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f' "$FILE" | grep -A2 "image:"
+
+      - name: Commit and push
+        run: |
+          FILE="values.yaml"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$FILE"
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Update jitsi-custom-web (sandbox) image tag to ${{ needs.build.outputs.tag }}"
+          git push
