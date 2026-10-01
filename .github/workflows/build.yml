@@ -79,6 +79,8 @@ jobs:
           context: .
           file: docker-build/Dockerfile
           push: true
+          build-args: |
+            AZURE_DEVOPS_PAT_TOKEN=${{ secrets.AZURE_DEVOPS_PAT_TOKEN }}
           tags: |
             ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.AR_PROJECT }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
           cache-from: type=gha,scope=jitsi-custom-web-sandbox-gcp
