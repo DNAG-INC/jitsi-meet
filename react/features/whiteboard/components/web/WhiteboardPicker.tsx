@@ -152,6 +152,14 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
             if (sessionTitle) {
                 params.set('seedTitle', sessionTitle);
             }
+
+            // Provisioning INTENT, separate from x-user-role (which says who
+            // the caller is). In a call the board is always wanted when the
+            // session has none, so moderators always ask; the service still
+            // checks the role before acting. Non-moderators never ask.
+            if (canCreate) {
+                params.set('autoProvision', '1');
+            }
             const qs = params.toString() ? `?${params.toString()}` : '';
             const res = await fetch(`${apiUrl.replace(/\/$/, '')}/api/whiteboard/getAll${qs}`, { headers });
             const json = await res.json();
@@ -163,7 +171,7 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
         } finally {
             setLoading(false);
         }
-    }, [ apiUrl, apiKey, sessionId, sessionTitle, category, subCategory, instituteId, headers ]);
+    }, [ apiUrl, apiKey, sessionId, sessionTitle, category, subCategory, instituteId, canCreate, headers ]);
 
     useEffect(() => {
         loadBoards();
