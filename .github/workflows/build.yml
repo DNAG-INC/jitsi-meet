@@ -79,7 +79,7 @@ jobs:
           context: .
           file: docker-build/Dockerfile
           build-args: |
-            GITHUB_PACKAGES_TOKEN=${{ secrets.GITHUB_PACKAGES_TOKEN }}
+            GITHUB_PACKAGES_TOKEN=${{ secrets.GIT_HUB_PACKAGES_TOKEN }}
           push: true
           tags: |
             ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.AR_PROJECT }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
