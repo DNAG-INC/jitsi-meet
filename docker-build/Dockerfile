@@ -22,17 +22,13 @@ ARG BASE_TAG=stable-11146-2
 
 FROM node:${NODE_VERSION}-bookworm-slim AS builder
 
-# Build-time secret: the AAuti Azure Artifacts feed PAT (Packaging: Read).
-# Passed by the pipeline via `docker build --build-arg AZURE_DEVOPS_PAT_TOKEN=$(secret) ...`.
-# Required so `npm ci` can resolve @aauti/whiteboard-sdk from the private
-# feed at pkgs.dev.azure.com/aauti/_packaging/aauti/npm/registry.
+# Registry auth for @dnag-inc/whiteboard-sdk on GitHub Packages (which
+# demands authentication even for public packages) comes from the repo's
+# own .npmrc, copied in with the manifests below. It is deliberately NOT
+# in .dockerignore so this build can read it.
 #
-# Why not just copy the repo's .npmrc? It's listed in .dockerignore — keeps
-# the token out of every Docker build context regardless of which Dockerfile
-# is consuming it. We synthesise .npmrc here from the ARG, run install, then
-# rm it. The token only exists inside this one RUN layer; the runtime stage
-# starts FROM jitsi/base and COPY's only specific build outputs (no .npmrc).
-ARG AZURE_DEVOPS_PAT_TOKEN
+# The token only exists in this builder stage; the runtime stage starts
+# FROM jitsi/base and COPYs just the build outputs.
 
 ENV DEBIAN_FRONTEND=noninteractive \
     NODE_OPTIONS=--max-old-space-size=8192
@@ -45,16 +41,9 @@ RUN apt-get update \
 WORKDIR /src
 
 # Install deps first for better layer caching across source edits.
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 COPY patches ./patches
-RUN printf '%s\n%s\n%s\n' \
-      'package-lock=true' \
-      'legacy-peer-deps=true' \
-      '@aauti:registry=https://pkgs.dev.azure.com/aauti/_packaging/aauti/npm/registry/' \
-      > .npmrc \
- && printf '//pkgs.dev.azure.com/aauti/_packaging/aauti/npm/registry/:_authToken=%s\n' \
-      "$AZURE_DEVOPS_PAT_TOKEN" >> .npmrc \
- && npm ci --no-audit --no-fund --legacy-peer-deps --ignore-scripts \
+RUN npm ci --no-audit --no-fund --legacy-peer-deps --ignore-scripts \
  && npx patch-package --error-on-fail \
  && rm -f .npmrc
 

@@ -65,7 +65,7 @@ deploy-appbundle:
 	cp -r $(BUILD_DIR)/chunks $(DEPLOY_DIR)/chunks
 	# Lazy-loaded webpack chunks (numeric-id filenames like 494.min.js,
 	# 868.min.js, etc.) emitted by dynamic imports such as
-	# `import('@aauti/whiteboard-sdk')` in Whiteboard.tsx. Without this glob
+	# `import('@dnag-inc/whiteboard-sdk')` in Whiteboard.tsx. Without this glob
 	# the chunks die in build/ and `__webpack_require__.u()` 404s at runtime
 	# the first time a user opens a feature that lazy-loads them. Each entry
 	# point above is still listed explicitly so the build fails loudly if any

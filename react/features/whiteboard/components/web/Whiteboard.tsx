@@ -9,14 +9,14 @@ import { useSelector } from 'react-redux';
 // sees the canvas pixels — fixing the "blank whiteboard in recordings"
 // bug that was the original driver of this migration.
 const WhiteboardEmbed = lazy(() =>
-    import('@aauti/whiteboard-sdk').then(m => ({ default: m.WhiteboardEmbed }))
+    import('@dnag-inc/whiteboard-sdk').then(m => ({ default: m.WhiteboardEmbed }))
 );
 
 // Forward-declare props that are present on `feat/recorder-mode` of the
 // SDK but haven't shipped in the installed package version yet. Once
 // the SDK is bumped to a release including those props, this
 // augmentation is a no-op duplicate (TS allows that for interfaces).
-declare module '@aauti/whiteboard-sdk' {
+declare module '@dnag-inc/whiteboard-sdk' {
     interface WhiteboardEmbedProps {
 
         /** Triggers startLeading() once on mount when the local user is the moderator. */
@@ -31,7 +31,7 @@ declare module '@aauti/whiteboard-sdk' {
 }
 // SDK ships a self-contained stylesheet scoped under `.wavebook-sdk` so
 // Jitsi's own CSS (and vice versa) can't override the board's look.
-import '@aauti/whiteboard-sdk/styles.css';
+import '@dnag-inc/whiteboard-sdk/styles.css';
 
 // @ts-expect-error
 import Filmstrip from '../../../../../modules/UI/videolayout/Filmstrip';
