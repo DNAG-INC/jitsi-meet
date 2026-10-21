@@ -32,6 +32,12 @@ interface IDocumentPiPControllerOptions {
     meetingUrl: string;
 
     /**
+     * Document title for the PiP window, shown in its header where the browser
+     * allows it. Chrome may still display the origin instead.
+     */
+    title?: string;
+
+    /**
      * The transport used to send host commands back to the meeting iframe.
      */
     transport: any;
@@ -228,6 +234,11 @@ export default class DocumentPiPController {
         }
 
         const pipDocument = newPiPWindow.document;
+
+        if (this._options.title) {
+            pipDocument.title = this._options.title;
+        }
+
         const link = pipDocument.createElement('link');
         const script = pipDocument.createElement('script');
 

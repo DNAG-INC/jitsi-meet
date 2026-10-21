@@ -310,6 +310,7 @@ export default function DocumentPiP() {
     return (
         <AlwaysOnTopView
             avatarURL = { participant.avatarURL }
+            conferenceTitle = { api._getLocalSubject?.() }
             customAvatarBackgrounds = { participant.customAvatarBackgrounds }
             displayName = { participant.displayName }
             formattedDisplayName = { participant.formattedDisplayName }

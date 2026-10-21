@@ -268,6 +268,15 @@ export function useDocumentPiPMediaSession() {
         }
 
         try {
+            // Chrome dispatches media session actions only to a session it treats as
+            // ACTIVE, and a session is only active once it has metadata and a playing
+            // state. Registering the handler alone is not enough: without these the
+            // handler is installed correctly and simply never called, so automatic PiP
+            // stays silent while the toolbar button - which calls the same code path
+            // directly - works. Upstream sets neither.
+            navigator.mediaSession.metadata = new MediaMetadata({ title: 'Meeting' });
+            navigator.mediaSession.playbackState = 'playing';
+
             navigator.mediaSession.setActionHandler('enterpictureinpicture', details => {
                 const reason = details?.enterPictureInPictureReason;
 

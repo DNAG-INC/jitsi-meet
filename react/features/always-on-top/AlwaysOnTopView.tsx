@@ -18,6 +18,9 @@ interface IProps {
     /** Optional renderer-owned media element. */
     children?: ReactNode;
 
+    /** Heading shown at the top of the window, e.g. the session title. */
+    conferenceTitle?: string;
+
     /** Configured avatar background palette. */
     customAvatarBackgrounds: string[];
 
@@ -48,6 +51,7 @@ interface IProps {
 export default function AlwaysOnTopView({
     avatarURL,
     children,
+    conferenceTitle,
     customAvatarBackgrounds,
     displayName,
     formattedDisplayName,
@@ -58,6 +62,9 @@ export default function AlwaysOnTopView({
 }: IProps) {
     return (
         <div id = 'alwaysOnTop'>
+            { conferenceTitle && (
+                <div className = 'documentPiPTitle'>{ conferenceTitle }</div>
+            ) }
             { children }
             <Toolbar
                 className = { toolbarVisible ? 'fadeIn' : 'fadeOut' }

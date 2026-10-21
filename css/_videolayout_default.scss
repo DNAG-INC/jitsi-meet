@@ -159,6 +159,28 @@
     z-index: $zindex0;
 }
 
+/**
+ * Session title across the top of the Document PiP window. Overlaid rather
+ * than stacked so it never eats into the video area, which is only ~160px
+ * tall; the gradient keeps it legible over a bright frame.
+ */
+#alwaysOnTop .documentPiPTitle {
+    background: linear-gradient(rgba(0, 0, 0, 0.65), transparent);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    left: 0;
+    overflow: hidden;
+    padding: 6px 10px 12px;
+    pointer-events: none;
+    position: absolute;
+    right: 0;
+    text-overflow: ellipsis;
+    top: 0;
+    white-space: nowrap;
+    z-index: 1;
+}
+
 #alwaysOnTop .displayname {
     font-size: 0.875rem;
     position: inherit;

@@ -351,6 +351,12 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
         this._onStageParticipant = undefined;
         this._iAmvisitor = undefined;
         this._pipConfig = configOverwrite?.pip;
+
+        // Shown as the heading in the Document PiP window. Taken from the
+        // embedder's config rather than conference state: localSubject is
+        // local-only, so it needs no moderator rights and is never broadcast,
+        // and the PiP renderer runs in its own document with no Redux store.
+        this._localSubject = configOverwrite?.localSubject;
         this._documentPiPController = undefined;
         this._setupListeners();
         id++;
@@ -382,6 +388,7 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
             'fullscreen',
             'hid',
             'microphone',
+            'picture-in-picture',
             'screen-wake-lock',
             'speaker-selection'
         ];
@@ -441,6 +448,26 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
      *
      * @param {string} participantId - The id of the participant.
      * @returns {string} The formatted display name.
+     */
+    _getLocalSubject() {
+        return this._localSubject;
+    }
+
+    /**
+     * Returns the UTC timestamp the conference was created, for elapsed-time
+     * displays such as the Document PiP window's timer.
+     *
+     * @returns {number|undefined} - The timestamp, or undefined before join.
+     */
+    _getConferenceTimestamp() {
+        return this._conferenceTimestamp;
+    }
+
+    /**
+     * Returns the formatted display name of a participant.
+     *
+     * @param {string} participantId - The id of the participant.
+     * @returns {string} - The formatted display name.
      */
     _getFormattedDisplayName(participantId) {
         const { formattedDisplayName }
@@ -623,6 +650,15 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
                 changeParticipantNumber(this, -1);
                 delete this._participants[userID];
                 break;
+            case 'conference-created-timestamp': {
+                // Cached because the event fires once on join, while the PiP
+                // window is usually opened long afterwards and would otherwise
+                // never see it. Coerced because lib-jitsi-meet delivers this as
+                // a STRING despite being typed as a number.
+                this._conferenceTimestamp = Number(data.timestamp) || undefined;
+                break;
+            }
+
             case 'display-name-change': {
                 const user = this._participants[userID];
 
@@ -778,7 +814,8 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
                 frame: this._frame,
                 transport: this._transport,
                 windowOptions: this._pipConfig?.documentPiP?.windowOptions,
-                meetingUrl: this._url
+                meetingUrl: this._url,
+                title: this._localSubject
             });
         }
 
