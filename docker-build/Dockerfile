@@ -22,13 +22,18 @@ ARG BASE_TAG=stable-11146-2
 
 FROM node:${NODE_VERSION}-bookworm-slim AS builder
 
-# Registry auth for @dnag-inc/whiteboard-sdk on GitHub Packages (which
-# demands authentication even for public packages) comes from the repo's
-# own .npmrc, copied in with the manifests below. It is deliberately NOT
-# in .dockerignore so this build can read it.
+# Build-time secret: a GitHub PAT carrying the read:packages scope.
+# Passed by the pipeline via `docker build --build-arg GITHUB_PACKAGES_TOKEN=$(secret) ...`.
+# Required so `npm ci` can resolve @dnag-inc/whiteboard-sdk from GitHub
+# Packages, which demands authentication even for public packages.
 #
-# The token only exists in this builder stage; the runtime stage starts
-# FROM jitsi/base and COPYs just the build outputs.
+# Why not copy the repo's .npmrc? It carries no credentials - this repo is
+# mirrored to GitHub, whose push protection refuses committed tokens - and it
+# is in .dockerignore so no token can reach a build context by accident. We
+# synthesise .npmrc here from the ARG, install, then rm it: the token exists
+# only inside this one RUN layer, and the runtime stage starts FROM
+# jitsi/base and COPYs only build outputs.
+ARG GITHUB_PACKAGES_TOKEN
 
 ENV DEBIAN_FRONTEND=noninteractive \
     NODE_OPTIONS=--max-old-space-size=8192
@@ -41,9 +46,16 @@ RUN apt-get update \
 WORKDIR /src
 
 # Install deps first for better layer caching across source edits.
-COPY package.json package-lock.json .npmrc ./
+COPY package.json package-lock.json ./
 COPY patches ./patches
-RUN npm ci --no-audit --no-fund --legacy-peer-deps --ignore-scripts \
+RUN printf '%s\n%s\n%s\n' \
+      'package-lock=true' \
+      'legacy-peer-deps=true' \
+      '@dnag-inc:registry=https://npm.pkg.github.com/' \
+      > .npmrc \
+ && printf '//npm.pkg.github.com/:_authToken=%s\n' \
+      "$GITHUB_PACKAGES_TOKEN" >> .npmrc \
+ && npm ci --no-audit --no-fund --legacy-peer-deps --ignore-scripts \
  && npx patch-package --error-on-fail \
  && rm -f .npmrc
 

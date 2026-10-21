@@ -40,6 +40,7 @@ e2e
 docs
 
 # Other build configs we don't need at runtime
+.npmrc
 .nvmrc
 .editorconfig
 .prettierrc*
