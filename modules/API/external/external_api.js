@@ -2,6 +2,7 @@ import { jitsiLocalStorage } from '@jitsi/js-utils/jitsi-local-storage';
 import EventEmitter from 'events';
 
 import { urlObjectToString } from '../../../react/features/base/util/uri';
+import DocumentPiPController from '../../../react/features/external-api/DocumentPiPController.web';
 import { isPiPEnabled } from '../../../react/features/pip/external-api.shared';
 import {
     PostMessageTransportBackend,
@@ -109,6 +110,7 @@ const commands = {
  * events expected by jitsi-meet.
  */
 const events = {
+    '_document-pip-signal': '_documentPiPSignal',
     '_pip-requested': '_pipRequested',
     'pip-entered': 'pipEntered',
     'pip-left': 'pipLeft',
@@ -341,14 +343,15 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
 
         this._onload = onload;
         this._tmpE2EEKey = e2eeKey;
-        this._isLargeVideoVisible = false;
-        this._isPrejoinVideoVisible = false;
+        this._largeVideoVisible = false;
+        this._prejoinVideoVisible = false;
         this._numberOfParticipants = 0;
         this._participants = {};
         this._myUserID = undefined;
         this._onStageParticipant = undefined;
         this._iAmvisitor = undefined;
         this._pipConfig = configOverwrite?.pip;
+        this._documentPiPController = undefined;
         this._setupListeners();
         id++;
     }
@@ -455,6 +458,24 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
         return this._onStageParticipant;
     }
 
+    /**
+     * Returns whether the meeting's large video is currently visible.
+     *
+     * @returns {boolean}
+     */
+    _isLargeVideoVisible() {
+        return this._largeVideoVisible;
+    }
+
+    /**
+     * Returns whether the meeting's prejoin video is currently visible.
+     *
+     * @returns {boolean}
+     */
+    _isPrejoinVideoVisible() {
+        return this._prejoinVideoVisible;
+    }
+
 
     /**
      * Getter for the large video element in Jitsi Meet.
@@ -464,7 +485,7 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
     _getLargeVideo() {
         const iframe = this.getIFrame();
 
-        if (!this._isLargeVideoVisible
+        if (!this._largeVideoVisible
                 || !iframe
                 || !iframe.contentWindow
                 || !iframe.contentWindow.document) {
@@ -482,7 +503,7 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
     _getPrejoinVideo() {
         const iframe = this.getIFrame();
 
-        if (!this._isPrejoinVideoVisible
+        if (!this._prejoinVideoVisible
                 || !iframe
                 || !iframe.contentWindow
                 || !iframe.contentWindow.document) {
@@ -556,6 +577,8 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
                 // Fake the iframe onload event because it's not reliable.
                 this._onload?.();
 
+                // A reloaded meeting must not keep a stale PiP window alive.
+                this._documentPiPController?.close();
                 break;
             }
             case 'video-conference-joined': {
@@ -630,7 +653,7 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
                 this.emit('largeVideoChanged');
                 break;
             case 'large-video-visibility-changed':
-                this._isLargeVideoVisible = data.isVisible;
+                this._largeVideoVisible = data.isVisible;
                 this.emit('largeVideoChanged');
                 break;
             case 'prejoin-screen-loaded':
@@ -640,7 +663,7 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
                 };
                 break;
             case 'on-prejoin-video-changed':
-                this._isPrejoinVideoVisible = data.isVisible;
+                this._prejoinVideoVisible = data.isVisible;
                 this.emit('prejoinVideoChanged');
                 break;
             case 'video-conference-left':
@@ -650,6 +673,15 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
             case 'video-quality-changed':
                 this._videoQuality = data.videoQuality;
                 break;
+            case '_document-pip-requested':
+                this._getDocumentPiPController().open()
+                    .catch(error => console.error('Document PiP open failed:', error));
+
+                return true;
+            case '_document-pip-close':
+                this._documentPiPController?.close();
+
+                return true;
             case 'breakout-rooms-updated':
                 this.updateNumberOfParticipants(data.rooms);
                 break;
@@ -732,6 +764,35 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
             this._intersectionObserver.disconnect();
             this._intersectionObserver = null;
         }
+    }
+
+    /**
+     * Returns this API instance's lazily created Document PiP controller.
+     *
+     * @returns {DocumentPiPController}
+     */
+    _getDocumentPiPController() {
+        if (!this._documentPiPController) {
+            this._documentPiPController = new DocumentPiPController({
+                api: this,
+                frame: this._frame,
+                transport: this._transport,
+                windowOptions: this._pipConfig?.documentPiP?.windowOptions,
+                meetingUrl: this._url
+            });
+        }
+
+        return this._documentPiPController;
+    }
+
+    /**
+     * Sends a media-cast signal from the Document PiP renderer to the meeting iframe.
+     *
+     * @param {Object} signal - Answer, candidate, restart, or stop signal.
+     * @returns {void}
+     */
+    _sendDocumentPiPSignal(signal) {
+        this._getDocumentPiPController().sendSignal(signal);
     }
 
     /**
@@ -950,6 +1011,7 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
      */
     dispose() {
         this.emit('_willDispose');
+        this._documentPiPController?.close();
         this._transport.dispose();
         this.removeAllListeners();
         this._teardownIntersectionObserver();
@@ -1667,6 +1729,7 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
      * @returns {void}
      */
     hidePiP() {
+        this._documentPiPController?.close();
         this.executeCommand('hidePiP');
     }
 

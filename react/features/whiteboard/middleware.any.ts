@@ -41,6 +41,13 @@ MiddlewareRegistry.register((store: IStore) => next => action => {
 
     case UPDATE_CONFERENCE_METADATA: {
         const wb = action.metadata?.[WHITEBOARD_ID];
+        const newCollabDetails = wb?.collabDetails;
+
+        // Only act on a *new* collaboration session. Unrelated metadata updates
+        // (toggling the lobby, say) carry the same collabDetails, and without this
+        // they re-open a whiteboard a participant had closed locally. The `closed`
+        // branch below only covers a moderator closing it for the whole room.
+        const previousCollabDetails = state['features/base/conference'].metadata?.[WHITEBOARD_ID]?.collabDetails;
 
         if (wb?.closed) {
             // Moderator hid the whiteboard for the room. Reset before flipping
@@ -48,9 +55,9 @@ MiddlewareRegistry.register((store: IStore) => next => action => {
             // details and skips the re-broadcast guard.
             store.dispatch(resetWhiteboard());
             store.dispatch(setWhiteboardOpen(false));
-        } else if (wb?.collabDetails?.roomId) {
+        } else if (newCollabDetails?.roomId && newCollabDetails.roomId !== previousCollabDetails?.roomId) {
             store.dispatch(setupWhiteboard({
-                collabDetails: wb.collabDetails,
+                collabDetails: newCollabDetails,
                 collabServerUrl: generateCollabServerUrl(store.getState()),
                 boardTitle: wb.boardTitle
             }));

@@ -42,6 +42,7 @@ VirtualHost "localhost"
         "system_chat_message";
         -- test-only
         "muc_password_check";
+        "muc_breakout_rooms";
     }
 
     -- mod_muc_password_check: verify Bearer tokens with the login ASAP key server.
@@ -67,8 +68,10 @@ VirtualHost "localhost"
 
     -- Required by mod_conference_duration to find the MUC component.
     -- Required by mod_muc_lobby_rooms.
+    -- Required by mod_muc_breakout_rooms.
     main_muc = "conference.localhost"
     lobby_muc = "lobby.conference.localhost"
+    breakout_rooms_muc = "breakout.conference.localhost"
 
     -- Clients on whitelist.localhost bypass the lobby.
     muc_lobby_whitelist = { "whitelist.localhost" }
@@ -108,6 +111,25 @@ VirtualHost "hs256.localhost"
 -- Second VirtualHost whose domain is listed in muc_access_whitelist on the
 -- MUC component below. Clients connecting here get JIDs like
 -- <random>@whitelist.localhost and are treated as whitelisted.
+-- VirtualHost with room-claim patterns turned off (token_regex_enabled), used
+-- to test that a token flagged with context.room.regex is refused rather than
+-- matched. mod_token_verification reads token options from the PARENT host of
+-- the MUC component, so the option must live here and not on the component.
+-- muc_mapper_domain_base is set so that verify_room builds the MUC domain of
+-- the paired component below, and not the global conference.localhost.
+-- The host deliberately sits outside .localhost: mod_muc_domain_mapper is
+-- enabled for every host and would read "conference.noregex.localhost" as the
+-- multidomain form of "[noregex]room@conference.localhost", moving the room
+-- off this component entirely.
+VirtualHost "noregex.test"
+    authentication = "token"
+    app_id = "jitsi"
+    asap_key_server = "http://localhost:5280/test-observer/asap-keys"
+    signature_algorithm = "RS256"
+    allow_empty_token = true
+    token_regex_enabled = false
+    muc_mapper_domain_base = "noregex.test"
+
 -- VirtualHost used by mod_auth_jitsi-anonymous tests.
 VirtualHost "jitsi-anonymous.localhost"
     authentication = "jitsi-anonymous"
@@ -123,3 +145,17 @@ VirtualHost "shared-secret.localhost"
 
 VirtualHost "whitelist.localhost"
     authentication = "anonymous"
+
+-- VirtualHost for mod_trace tests, with otlp_endpoint configured so the
+-- module is active. Points at the mock OTLP receiver served by
+-- mod_test_observer_http on the main VirtualHost.
+VirtualHost "trace.localhost"
+    authentication = "anonymous"
+    modules_enabled = { "trace" }
+    otlp_endpoint = "http://localhost:5280/test-observer/otlp-traces"
+
+-- VirtualHost for mod_trace tests with otlp_endpoint left unset: the module
+-- must log a warning and no-op rather than hook anything.
+VirtualHost "trace-disabled.localhost"
+    authentication = "anonymous"
+    modules_enabled = { "trace" }

@@ -139,7 +139,6 @@ import { getLocalJitsiAudioTrackSettings } from './react/features/base/tracks/fu
 import { downloadJSON } from './react/features/base/util/downloadJSON';
 import { getJitsiMeetGlobalNSConnectionTimes } from './react/features/base/util/helpers';
 import { openLeaveReasonDialog } from './react/features/conference/actions.web';
-import { showDesktopPicker } from './react/features/desktop-picker/actions';
 import { appendSuffix } from './react/features/display-name/functions';
 import { maybeOpenFeedbackDialog, submitFeedback } from './react/features/feedback/actions';
 import { maybeSetLobbyChatMessageListener } from './react/features/lobby/actions.any';
@@ -169,18 +168,6 @@ import { muteLocal } from './react/features/video-menu/actions.any';
 
 const logger = Logger.getLogger('app:conference-web');
 let room;
-
-/*
- * Logic to open a desktop picker put on the window global for
- * lib-jitsi-meet to detect and invoke.
- *
- * TODO: remove once the Electron SDK supporting gDM has been out for a while.
- */
-window.JitsiMeetScreenObtainer = {
-    openDesktopPicker(options, onSourceChoose) {
-        APP.store.dispatch(showDesktopPicker(options, onSourceChoose));
-    }
-};
 
 /**
  * Known custom conference commands.
@@ -951,16 +938,17 @@ export default {
      * Sets multiple properties for the local participant in a single presence update.
      *
      * @param {Object} properties - Object of property names to values.
+     * @param {boolean} [useRawKeys] - Skip the "jitsi_participant_" prefix when true.
      * @returns {void}
      */
-    setLocalParticipantProperties(properties) {
+    setLocalParticipantProperties(properties, useRawKeys = false) {
         if (!room) {
             logger.warn('Not setting participant properties, conference not initialized');
 
             return;
         }
 
-        room.setLocalParticipantProperties(properties);
+        room.setLocalParticipantProperties(properties, useRawKeys);
     },
 
     /**

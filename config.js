@@ -89,6 +89,12 @@ var config = {
         // Enables use of getDisplayMedia in electron
         // electronUseGetDisplayMedia: false,
 
+        // Removes AV1 from the codec list on Firefox so that it is not advertised and other endpoints do not send
+        // it. Firefox stalls on AV1 streams that carry spatial layers, see
+        // https://bugzilla.mozilla.org/show_bug.cgi?id=2071030. Note: enableAV1ForFF only changes what Firefox
+        // encodes, this also stops it being sent to Firefox.
+        // disableAV1DecodeForFF: false,
+
         // Enables AV1 codec for FF. Note: By default it is disabled.
         // enableAV1ForFF: false,
 
@@ -226,10 +232,14 @@ var config = {
     // Beware, by doing so, you are disabling echo cancellation, noise suppression and AGC.
     // Specify enableOpusDtx to enable support for opus-dtx where
     // audio packets won’t be transmitted while participant is silent or muted.
+    // Specify enableAdvancedAudioSettings to show advanced audio settings (custom mic
+    // constraints) in the device selection dialog. Enabled by default; not available on
+    // WebKit-based browsers.
     // audioQuality: {
     //     stereo: false,
     //     opusMaxAverageBitrate: null, // Value to fit the 6000 to 510000 range.
     //     enableOpusDtx: false,
+    //     enableAdvancedAudioSettings: true,
     // },
 
     // Audio translation feature (requires bridge backend support).
@@ -701,6 +711,16 @@ var config = {
     // the bridge going down.
     // enableForcedReload: true,
 
+    // Enables in-place ICE restarts of the bridge connection (e.g. after a network change), instead of the
+    // legacy recovery flow which re-creates the whole media session. Requires support in jitsi-videobridge
+    // (default: disabled).
+    // enableIceRestart: false,
+
+    // Whether an in-place ICE restart is requested proactively when the device changes network (mobile only),
+    // instead of waiting for ICE to fail. Only has an effect when 'enableIceRestart' is enabled
+    // (default: enabled).
+    // enableIceRestartOnNetworkChange: true,
+
     // Use TURN/UDP servers for the jitsi-videobridge connection (by default
     // we filter out TURN/UDP because it is usually not needed since the
     // bridge itself is reachable via UDP)
@@ -826,6 +846,31 @@ var config = {
 
     // The client id for the google APIs used for the calendar integration, youtube livestreaming, etc.
     // googleApiApplicationClientID: '<client_id>',
+
+    // Picture-in-Picture configuration.
+    // pip: {
+    //     // Enable Picture-in-Picture for browser meetings. Opt-in, defaults to false.
+    //     enableBrowserPiP: false,
+    //     // Disable Picture-in-Picture entirely. Defaults to false.
+    //     disabled: false,
+    //     // Allow Picture-in-Picture on the prejoin page. Defaults to false.
+    //     showOnPrejoin: false,
+    //     // Show the Picture-in-Picture toolbar button when supported. Defaults to true.
+    //     showToolbarButton: true,
+    //     documentPiP: {
+    //         windowOptions: {
+    //             // Hide the browser control that returns to the opener. Defaults to false.
+    //             disallowReturnToOpener: false,
+    //             // Initial window height in pixels. Defaults to 160.
+    //             height: 160,
+    //             // Prefer the default initial placement instead of reusing the previous position and size.
+    //             // Defaults to false.
+    //             preferInitialWindowPlacement: false,
+    //             // Initial window width in pixels. Defaults to 284.
+    //             width: 284
+    //         }
+    //     }
+    // },
 
     // Configs for prejoin page.
     // prejoinConfig: {
@@ -1653,6 +1698,11 @@ var config = {
     // Hides the participants stats
     // hideParticipantsStats: true,
 
+    // Hides the warning which is shown when the server signals that this client does not advertise a capability that
+    // the deployment expects (i.e. that the client needs an update). The error which is shown when the client is not
+    // allowed in the conference at all is always shown.
+    // hideMissingCapabilityWarnings: false,
+
     // Sets the conference subject
     // subject: 'Conference Subject',
 
@@ -1962,11 +2012,21 @@ var config = {
 
     // Meeting-pace timer shown in the conference info bar. It only appears
     // once a meeting duration is known — from a calendar event (calendar
-    // sync) or pushed at runtime via the `setMeetingTimer` iframe API
-    // command. With no such info nothing is shown, so it is enabled by
-    // default; set `enabled: false` to hide it even when that info exists.
+    // sync), the `mod_time_restricted` Prosody plugin, or pushed at runtime
+    // via the `setMeetingTimer` iframe API command. With no such info nothing
+    // is shown, so it is enabled by default; set `enabled: false` to hide it
+    // even when that info exists.
+    // `suppressForSeconds` keeps the countdown off screen for the first N
+    // seconds of the meeting even though the duration is already known, so it
+    // only appears once the meeting is far enough along to be worth pacing.
+    // It is measured from the meeting's scheduled start, not from when this
+    // participant joined, so everyone sees it appear at the same moment and a
+    // late joiner past the threshold sees it right away. 0 (the default)
+    // shows it as soon as the duration is known. It delays the countdown
+    // display only — the end-of-meeting notification is unaffected.
     // timeTimer: {
     //     enabled: true,
+    //     suppressForSeconds: 0,
     // },
 
     // Settings for the Excalidraw whiteboard integration.

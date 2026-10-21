@@ -446,6 +446,8 @@ export interface IConfig {
     enableEmailInStats?: boolean;
     enableEncodedTransformSupport?: boolean;
     enableForcedReload?: boolean;
+    enableIceRestart?: boolean;
+    enableIceRestartOnNetworkChange?: boolean;
     enableInsecureRoomNameWarning?: boolean;
     /**
      * @deprecated Use `lobby.enableChat` instead.
@@ -538,6 +540,7 @@ export interface IConfig {
      */
     hideLobbyButton?: boolean;
     hideLoginButton?: boolean;
+    hideMissingCapabilityWarnings?: boolean;
     hideParticipantsStats?: boolean;
     hideRecordingLabel?: boolean;
     hosts?: {
@@ -642,7 +645,29 @@ export interface IConfig {
     peopleSearchUrl?: string;
     pip?: {
         disabled?: boolean;
+        /**
+         * Document Picture-in-Picture configuration.
+         *
+         * @see https://developer.chrome.com/docs/web-platform/document-picture-in-picture#methods
+         */
+        documentPiP?: {
+            windowOptions?: {
+                disallowReturnToOpener?: boolean;
+                height?: number;
+                preferInitialWindowPlacement?: boolean;
+                width?: number;
+            };
+        };
+        /**
+         * Whether Picture-in-Picture is enabled for browser (non-Electron) meetings.
+         * Opt-in: defaults to false.
+         */
+        enableBrowserPiP?: boolean;
         showOnPrejoin?: boolean;
+        /**
+         * Whether to show the Picture-in-Picture toolbar button when supported.
+         */
+        showToolbarButton?: boolean;
     };
     preferBosh?: boolean;
     preferVisitor?: boolean;
@@ -739,6 +764,7 @@ export interface IConfig {
     testing?: {
         assumeBandwidth?: boolean;
         debugAudioLevels?: boolean;
+        disableAV1DecodeForFF?: boolean;
         dumpTranscript?: boolean;
         failICE?: boolean;
         noAutoPlayVideo?: boolean;
@@ -753,6 +779,7 @@ export interface IConfig {
     };
     timeTimer?: {
         enabled?: boolean;
+        suppressForSeconds?: number;
     };
     tokenAuthInline?: boolean;
     tokenAuthUrl?: string;
