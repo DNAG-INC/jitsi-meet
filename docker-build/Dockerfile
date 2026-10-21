@@ -23,7 +23,7 @@ ARG BASE_TAG=stable-11146-2
 FROM node:${NODE_VERSION}-bookworm-slim AS builder
 
 # Build-time secret: a GitHub PAT carrying the read:packages scope.
-# Passed by the pipeline via `docker build --build-arg GITHUB_PACKAGES_TOKEN=$(secret) ...`.
+# Passed by the pipeline via `docker build --build-arg GIT_HUB_PACKAGES_TOKEN=$(secret) ...`.
 # Required so `npm ci` can resolve @dnag-inc/whiteboard-sdk from GitHub
 # Packages, which demands authentication even for public packages.
 #
@@ -33,7 +33,7 @@ FROM node:${NODE_VERSION}-bookworm-slim AS builder
 # synthesise .npmrc here from the ARG, install, then rm it: the token exists
 # only inside this one RUN layer, and the runtime stage starts FROM
 # jitsi/base and COPYs only build outputs.
-ARG GITHUB_PACKAGES_TOKEN
+ARG GIT_HUB_PACKAGES_TOKEN
 
 ENV DEBIAN_FRONTEND=noninteractive \
     NODE_OPTIONS=--max-old-space-size=8192
@@ -54,7 +54,7 @@ RUN printf '%s\n%s\n%s\n' \
       '@dnag-inc:registry=https://npm.pkg.github.com/' \
       > .npmrc \
  && printf '//npm.pkg.github.com/:_authToken=%s\n' \
-      "$GITHUB_PACKAGES_TOKEN" >> .npmrc \
+      "$GIT_HUB_PACKAGES_TOKEN" >> .npmrc \
  && npm ci --no-audit --no-fund --legacy-peer-deps --ignore-scripts \
  && npx patch-package --error-on-fail \
  && rm -f .npmrc
