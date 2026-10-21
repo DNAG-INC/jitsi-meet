@@ -88,6 +88,20 @@ function devServerProxyBypass({ path }) {
         return tpath;
     }
 
+    // A deployment serves the IFrame API from its root, and that is where
+    // @jitsi/react-sdk loads it from (`https://${domain}/external_api.js`).
+    // The dev server only builds it under /libs, so without this the root path
+    // falls through to the proxy and the embedding page silently gets the dev
+    // TARGET's copy instead of this checkout's. Anything whose embedder half
+    // lives in this bundle - Document PiP most of all - is then missing, with
+    // no error to show for it.
+    const apiFile = tpath.slice(tpath.lastIndexOf('/') + 1);
+
+    if (!tpath.startsWith('/libs/')
+            && (apiFile === 'external_api.js' || apiFile === 'external_api.min.js')) {
+        tpath = '/libs/external_api.min.js';
+    }
+
     if (tpath.startsWith('/libs/')) {
         if (tpath.endsWith('.min.js') && !fs.existsSync(join(process.cwd(), tpath))) {
             return tpath.replace('.min.js', '.js');
@@ -296,7 +310,23 @@ function getDevServerConfig() {
                 }
             }
         ],
-        server: process.env.CODESPACES ? 'http' : 'https',
+        // DEV_SERVER_KEY/CERT let the dev server use a locally TRUSTED
+        // certificate (e.g. one issued by mkcert) instead of webpack's
+        // self-signed default. An embedding page on another https origin
+        // cannot load external_api.js from a self-signed cert - Chrome fails
+        // it with ERR_CERT_AUTHORITY_INVALID - so testing the IFrame API over
+        // https locally needs a cert chaining to an installed CA.
+        server: process.env.CODESPACES
+            ? 'http'
+            : process.env.DEV_SERVER_KEY && process.env.DEV_SERVER_CERT
+                ? {
+                    type: 'https',
+                    options: {
+                        key: process.env.DEV_SERVER_KEY,
+                        cert: process.env.DEV_SERVER_CERT
+                    }
+                }
+                : 'https',
         setupMiddlewares: (middlewares, _devServer) => middlewares.filter(
             m => m.name !== 'cross-origin-header-check'
         ),
