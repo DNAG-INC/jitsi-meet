@@ -418,7 +418,11 @@ module.exports = (_env, argv) => {
                 ...config.plugins,
                 ...getBundleAnalyzerPlugin(analyzeBundle, 'external_api')
             ],
-            performance: getPerformanceHints(perfHintOptions, 100 * 1024) },
+            // Raised from 100KB, which 11248 had already filled: Document PiP put
+            // its controller, the media-cast signalling and the renderer bootstrap
+            // into this bundle, leaving no headroom for an embedder-side addition.
+            // 128KB matches the ceiling the other entry points here already use.
+            performance: getPerformanceHints(perfHintOptions, 128 * 1024) },
         { ...config,
             entry: {
                 'face-landmarks-worker': './react/features/face-landmarks/faceLandmarksWorker.ts'
