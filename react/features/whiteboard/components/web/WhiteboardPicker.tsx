@@ -325,7 +325,13 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                 color: '#fafafa',
                 boxSizing: 'border-box'
             }}>
-            <div style = {{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div
+                style = {{ display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 12,
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 20 }}>
                 <h2 style = {{ margin: 0, fontSize: 18 }}>Select a whiteboard</h2>
                 <button
                     disabled = { loading }
@@ -349,7 +355,11 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
             <div
                 style = {{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+
+                    // `min(200px, 100%)` rather than a bare 200px: below that width the track
+                    // would keep its 200px floor and push the grid into horizontal overflow,
+                    // which is what clips the cards on a phone-width panel.
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(min(200px, 100%), 1fr))',
                     gap: 16
                 }}>
                 { canCreate && (
@@ -396,14 +406,24 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        zIndex: 100
+                        padding: 16,
+                        boxSizing: 'border-box',
+
+                        // Over the filmstrip ($filmstripVideosZ = 251), which drew its tiles
+                        // across this dialog at the old value. Matches BaseDialog's backdrop.
+                        zIndex: 301
                     }}>
                     <div
                         style = {{
                             background: '#27272a',
                             padding: 24,
                             borderRadius: 8,
-                            minWidth: 320
+
+                            // minWidth here outgrew a phone viewport and clipped the dialog
+                            // off the left edge; width + maxWidth keeps it centred instead.
+                            width: 320,
+                            maxWidth: '100%',
+                            boxSizing: 'border-box'
                         }}>
                         <div style = {{ marginBottom: 12, fontWeight: 600 }}>New Whiteboard</div>
                         <input
