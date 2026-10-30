@@ -227,7 +227,15 @@ export function useCanvasAvatar(options: IUseCanvasAvatarOptions): IUseCanvasAva
             initialsColor,
             displayNameColor
         ).then(publishFrame)
-            .catch((error: Error) => logger.error('Error rendering avatar on canvas:', error));
+            .catch((error: Error) => {
+                logger.error('Error rendering avatar on canvas:', error);
+
+                // The canvas still holds the background fill painted above, so publish it.
+                // Skipping this leaves the capture stream without a single frame, the PiP
+                // video stuck at readyState 0, and the request deferred to a
+                // 'loadedmetadata' that never fires.
+                publishFrame();
+            });
     }, [ participant?.loadableAvatarUrl, participant?.loadableAvatarUrlUseCORS, participant?.name, displayName, customAvatarBackgrounds, backgroundColor, fontFamily, initialsColor, displayNameColor, shouldShowAvatar, publishFrame ]);
 
     return {

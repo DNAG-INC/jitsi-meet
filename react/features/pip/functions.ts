@@ -31,6 +31,12 @@ import {
 let pipRequestPending = false;
 
 /**
+ * How long a deferred PiP request waits for the video to report metadata before giving up and
+ * releasing pipRequestPending.
+ */
+const METADATA_WAIT_TIMEOUT_MS = 5000;
+
+/**
  * Flag to track if a Document PiP request is currently pending.
  * Prevents duplicate requestWindow() calls before the first one resolves.
  */
@@ -364,34 +370,22 @@ export function requestPictureInPicture() {
     if (video.readyState < 1) {
         logger.warn('Video metadata not loaded yet, waiting...');
 
-        // Two known limitations of this deferred request, deliberately not handled for now:
+        // 'loadedmetadata' may never fire — the avatar image fetch can stall, so the canvas
+        // capture never produces a frame, or a video track never delivers one. Left unbounded,
+        // pipRequestPending stays true and the entry guard in enterVideoPiP() rejects every
+        // later click: the button goes permanently dead until a page reload.
         //
-        // 1. 'loadedmetadata' may never fire (e.g. the avatar image fetch stalls forever, so the
-        //    canvas captureStream(0) never produces a frame, or a video track never delivers a
-        //    frame). pipRequestPending then stays true and PiP is blocked until page reload.
-        //    If reports of a permanently dead PiP button ever come in, bound the wait:
-        //
-        //        const onMetadata = () => {
-        //            clearTimeout(timer);
-        //            // ...existing requestPictureInPicture() logic...
-        //        };
-        //        const timer = setTimeout(() => {
-        //            video.removeEventListener('loadedmetadata', onMetadata);
-        //            logger.warn('Timed out waiting for video metadata, resetting PiP request state.');
-        //            pipRequestPending = false;
-        //        }, 5000);
-        //        video.addEventListener('loadedmetadata', onMetadata, { once: true });
-        //
-        // 2. TODO: In browsers, by the time 'loadedmetadata' fires the click's transient activation
-        //    has expired, so requestPictureInPicture() below rejects with NotAllowedError and the
-        //    click fails silently; clicking again once media is flowing works. This only happens
-        //    when the click lands in a readyState < 1 window: the brief moment right after mount,
-        //    the ~100ms srcObject swap when the large-video participant changes or the camera is
-        //    toggled, or while a slow avatar image fetch delays the first canvas frame — so it is
-        //    rare in practice. Revisit if it shows up in reports (e.g. a short bounded wait within
-        //    the activation window). The Electron flow is unaffected: it requests PiP from the main
-        //    process with userGesture: true, and its behavior here is pre-existing.
-        video.addEventListener('loadedmetadata', () => {
+        // Known remaining limitation: by the time 'loadedmetadata' fires the click's transient
+        // activation has expired, so requestPictureInPicture() rejects with NotAllowedError and
+        // this click fails silently; clicking again once media is flowing works. The Electron
+        // flow is unaffected — it requests PiP from the main process with userGesture: true.
+        let settled = false;
+
+        const onMetadata = () => {
+            if (settled) {
+                return;
+            }
+            settled = true;
             logger.debug(`Calling video.requestPictureInPicture(), readyState=${video.readyState}`);
 
             video.requestPictureInPicture().then(() => {
@@ -405,7 +399,19 @@ export function requestPictureInPicture() {
                 // and the this flag is not reset. This would prevent PiP for ever displaying again.
                 pipRequestPending = false;
             });
-        }, { once: true });
+        };
+
+        setTimeout(() => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            video.removeEventListener('loadedmetadata', onMetadata);
+            logger.warn('Timed out waiting for video metadata, resetting PiP request state.');
+            pipRequestPending = false;
+        }, METADATA_WAIT_TIMEOUT_MS);
+
+        video.addEventListener('loadedmetadata', onMetadata, { once: true });
 
         return;
     }
