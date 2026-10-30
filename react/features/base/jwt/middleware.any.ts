@@ -84,13 +84,18 @@ function _overwriteLocalParticipant(
         { avatarURL?: string; email?: string; features?: any; id?: string; name?: string; }) {
     let localParticipant;
 
-    if ((avatarURL || email || name || features) && (localParticipant = getLocalParticipant(getState))) {
+    // An avatar claim that is present but empty states that this user HAS no picture, which is
+    // not the same as the claim being absent. Treating the two alike left the empty case falling
+    // back to the avatar persisted in base/settings — the previous user of this browser.
+    const avatarClaimed = typeof avatarURL === 'string';
+
+    if ((avatarClaimed || email || name || features) && (localParticipant = getLocalParticipant(getState))) {
         const newProperties: IParticipant = {
             id: localParticipant.id,
             local: true
         };
 
-        if (avatarURL) {
+        if (avatarClaimed) {
             newProperties.avatarURL = avatarURL;
         }
         if (email) {
