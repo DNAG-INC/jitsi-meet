@@ -1,26 +1,38 @@
 name: GCP Promote
 
-run-name: "GCP Promote: jitsi-custom-web → prod #${{ github.run_number }}"
+run-name: "GCP Promote: jitsi-custom-web sandbox → ${{ inputs.target }} #${{ github.run_number }}"
 
-# Only one hop here: sandbox -> prod (this chart has no separate dev/qa/demo,
-# values-sandbox.yaml is the sandbox environment). Points
-# values-prod.yaml's web.image at the exact same tag values-sandbox.yaml
-# currently uses — no rebuild, no retag, the registry is never touched
-# beyond carrying the source's repository line forward.
+# Promotes the web image that values-sandbox.yaml currently uses (built by
+# build.yml) to another values file in aauti-jitsi — no rebuild, no retag,
+# only web.image.repository/tag are copied.
+#
+#   values.yaml       -> default target (sandbox -> values.yaml)
+#   values-prod.yaml  -> production; requires typing PROMOTE TO PROD
+#
+# Only the `web:` block is touched; every other component's image in the
+# chart comes from upstream and must never be changed here.
 
 on:
   workflow_dispatch:
     inputs:
-      confirm:
-        description: 'This releases to PRODUCTION. Type PROMOTE TO PROD to confirm.'
+      target:
+        description: 'Values file to promote the sandbox web image to'
         required: true
+        type: choice
+        default: values.yaml
+        options:
+          - values.yaml
+          - values-prod.yaml
+      confirm:
+        description: 'Only for values-prod.yaml: type PROMOTE TO PROD'
+        required: false
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: gcp-promote-jitsi-custom-web-prod
+  group: gcp-promote-jitsi-custom-web-${{ inputs.target }}
   cancel-in-progress: false
 
 env:
@@ -28,12 +40,13 @@ env:
 
 jobs:
   promote:
-    name: sandbox -> prod
+    name: sandbox -> ${{ inputs.target }}
     runs-on: ubuntu-latest
-    # Uncomment to require manual approval before promoting to prod:
-    # environment: production
+    # Uncomment to require manual approval before promoting:
+    # environment: ${{ inputs.target == 'values-prod.yaml' && 'production' || 'staging' }}
     steps:
       - name: Verify production confirmation
+        if: inputs.target == 'values-prod.yaml'
         run: |
           if [[ "${{ inputs.confirm }}" != "PROMOTE TO PROD" ]]; then
             echo "::error::Confirmation text didn't match — you must type exactly 'PROMOTE TO PROD' to release to production. Nothing was changed."
@@ -58,46 +71,63 @@ jobs:
       - name: Read current tag+repository from sandbox (web block only)
         id: current
         run: |
-          # tr -d strips any trailing \r — this file is CRLF, and the
-          # repository line's unbounded `.*` capture would otherwise pull a
-          # stray carriage return into the variable and corrupt the line
-          # this gets written into later.
+          # tr -d strips any trailing \r so a CRLF file can't leak a carriage
+          # return into the values written below.
           FROM_REPO=$(awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f && /^\s*repository:/{print; exit}' values-sandbox.yaml | sed -E 's/.*repository:\s*(.*)/\1/' | tr -d '\r')
           FROM_TAG=$(awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f && /^\s*tag:/{print; exit}' values-sandbox.yaml | sed -E 's/.*tag:\s*"(.*)"/\1/' | tr -d '\r')
           if [[ -z "$FROM_REPO" || -z "$FROM_TAG" ]]; then
             echo "::error::Could not read image repository/tag from values-sandbox.yaml"
             exit 1
           fi
+          echo "Sandbox web image: ${FROM_REPO}:${FROM_TAG}"
           echo "from_repository=${FROM_REPO}" >> "$GITHUB_OUTPUT"
           echo "from_tag=${FROM_TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Update image tag for prod (web block only)
+      - name: Update image tag in ${{ inputs.target }} (web block only)
         run: |
-          FILE="values-prod.yaml"
+          FILE="${{ inputs.target }}"
           NEW_REPO="${{ steps.current.outputs.from_repository }}"
           NEW_TAG="${{ steps.current.outputs.from_tag }}"
-          # This file is CRLF throughout; awk normalizes to LF on output, so
-          # re-add \r before overwriting, otherwise every single line (not
-          # just the 2 we touched) would show as changed in the git diff.
-          awk -v repo="$NEW_REPO" -v tag="$NEW_TAG" '
-            /^web:/ { inweb=1 }
-            inweb && !/^web:/ && /^[A-Za-z]/ { inweb=0 }
-            inweb && /^\s*repository:/ { sub(/repository:.*/, "repository: " repo) }
-            inweb && /^\s*tag:/ { sub(/tag:.*/, "tag: \"" tag "\"") }
-            { sub(/\r$/, ""); print $0 "\r" }
-          ' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE"
+          # Byte-exact edit of only the first repository:/tag: lines inside the
+          # top-level `web:` block. Line endings (CRLF or LF) and every other
+          # line are left untouched, so the diff is exactly 2 lines.
+          python3 - "$FILE" "$NEW_REPO" "$NEW_TAG" <<'PY'
+          import re, sys
+          path, repo, tag = sys.argv[1:]
+          lines = open(path, 'rb').read().split(b'\n')
+          inweb = done_repo = done_tag = False
+          for i, line in enumerate(lines):
+              if line.startswith(b'web:'):
+                  inweb = True
+                  continue
+              if inweb and re.match(rb'[A-Za-z]', line):
+                  break
+              if not inweb:
+                  continue
+              eol = b'\r' if line.endswith(b'\r') else b''
+              if not done_repo and re.match(rb'\s*repository:', line):
+                  lines[i] = re.sub(rb'repository:.*', b'repository: ' + repo.encode(), line.rstrip(b'\r')) + eol
+                  done_repo = True
+              elif not done_tag and re.match(rb'\s*tag:', line):
+                  lines[i] = re.sub(rb'tag:.*', b'tag: "' + tag.encode() + b'"', line.rstrip(b'\r')) + eol
+                  done_tag = True
+          if not (done_repo and done_tag):
+              sys.exit(f"::error::web.image repository/tag not found in {path}")
+          open(path, 'wb').write(b'\n'.join(lines))
+          PY
           echo "Updated $FILE (web block):"
           awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f' "$FILE" | grep -A2 "image:"
+          git diff --stat
 
       - name: Commit and push
         run: |
-          FILE="values-prod.yaml"
+          FILE="${{ inputs.target }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "$FILE"
           if git diff --cached --quiet; then
-            echo "No changes to commit"
+            echo "No changes to commit — $FILE already uses the sandbox image"
             exit 0
           fi
-          git commit -m "Promote jitsi-custom-web to prod: ${{ steps.current.outputs.from_tag }}"
+          git commit -m "Promote jitsi-custom-web to ${FILE}: ${{ steps.current.outputs.from_tag }}"
           git push
