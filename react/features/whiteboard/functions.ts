@@ -49,6 +49,14 @@ export interface IWaveBookJwtContext {
     sessionId?: string;
 
     /**
+     * The session's assigned instructor. Named as the owner of a board the
+     * whiteboard service auto-provisions, so the board is the instructor's
+     * even when an admin opens it first.
+     */
+    sessionOwnerId?: string;
+    sessionOwnerName?: string;
+
+    /**
      * Session name. Used to title a board the whiteboard service
      * auto-provisions for an empty session, so it reads as the class
      * rather than a generic fallback in an instructor's library.
@@ -75,6 +83,8 @@ export const getWaveBookJwtContext = (state: IReduxState): IWaveBookJwtContext |
             userId: ctx.user?.id,
             userName: ctx.user?.name,
             sessionId: meta.sessionId,
+            sessionOwnerId: meta.sessionOwnerId,
+            sessionOwnerName: meta.sessionOwnerName,
             sessionTitle: meta.sessionTitle,
             userRole: meta.userRole,
             category: meta.category,

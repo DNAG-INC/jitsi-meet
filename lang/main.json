@@ -1830,6 +1830,20 @@
         "accessibilityLabel": {
             "heading": "Whiteboard"
         },
-        "screenTitle": "Whiteboard"
+        "addBoard": "Add Whiteboard",
+        "addBoardDescription": "Create new whiteboard",
+        "boardNameHint": "{{length}}/{{max}} characters (min {{min}})",
+        "boardNameLabel": "Board name",
+        "createBoard": "Create",
+        "createBoardTitle": "New Whiteboard",
+        "errorCreateFailed": "Failed to create board",
+        "errorLoadFailed": "Failed to load boards",
+        "errorNotConfigured": "Whiteboard API not configured",
+        "errorTitleTooShort": "Title must be at least {{min}} characters",
+        "pickerTitle": "Select a whiteboard",
+        "refresh": "Refresh",
+        "screenTitle": "Whiteboard",
+        "untitledBoard": "Untitled",
+        "updatedAt": "Updated {{date}}"
     }
 }

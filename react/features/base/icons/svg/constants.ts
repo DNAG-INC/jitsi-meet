@@ -73,6 +73,7 @@ import { default as IconPlay } from './play.svg';
 import { default as IconPlus } from './plus.svg';
 import { default as IconRaiseHand } from './raise-hand.svg';
 import { default as IconRecord } from './record.svg';
+import { default as IconReload } from './reload.svg';
 import { default as IconReply } from './reply.svg';
 import { default as IconRestore } from './restore.svg';
 import { default as IconScreenshare } from './screenshare.svg';
@@ -195,6 +196,7 @@ export const DEFAULT_ICON: Record<string, any> = {
     IconRecordOpportunity,
     IconRemoteControlStart,
     IconRemoteControlStop,
+    IconReload,
     IconReply,
     IconRestore,
     IconRingGroup,

@@ -1,63 +1,135 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useDispatch, useSelector } from 'react-redux';
+import { makeStyles } from 'tss-react/mui';
 
 import { IReduxState } from '../../../app/types';
+import { openDialog } from '../../../base/dialog/actions';
+import { IconPlus, IconReload } from '../../../base/icons/svg';
 import { getLocalParticipant, getRemoteParticipants } from '../../../base/participants/functions';
 import { IParticipant } from '../../../base/participants/types';
+import Button from '../../../base/ui/components/web/Button';
+import ClickableIcon from '../../../base/ui/components/web/ClickableIcon';
 import { selectWhiteboardBoard } from '../../actions.web';
+import { BOARD_NAME_MIN_LENGTH } from '../../constants';
 import { IWaveBookMember, getWaveBookJwtContext, resolveWhiteboardCallerRole } from '../../functions';
+import { IBoard } from '../../types';
 
-interface IBoard {
-    _id?: string;
-    description?: string;
-    id?: string;
-    name?: string;
-    title?: string;
-    updatedAt?: string;
-}
+import WhiteboardBoardCard from './WhiteboardBoardCard';
+import WhiteboardCreateDialog from './WhiteboardCreateDialog';
+import { getWhiteboardCardStyles } from './styles';
 
-const cardStyle: React.CSSProperties = {
-    background: '#27272a',
-    border: '1px solid #3f3f46',
-    borderRadius: 8,
-    padding: 16,
-    minHeight: 120,
-    color: '#fafafa',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'space-between',
-    cursor: 'pointer',
-    fontSize: 14,
-    overflow: 'hidden'
-};
+/**
+ * Below this width the panel is too narrow for the dashed "Add" tile, which costs a
+ * whole grid row before any board is visible. The header carries an icon button instead.
+ */
+const COMPACT_MAX_WIDTH = 480;
 
-// Long board names (created before the 15-char cap) must wrap inside the card
-// rather than spill out of it.
-const cardTitleStyle: React.CSSProperties = {
-    fontWeight: 600,
-    overflowWrap: 'anywhere'
-};
+const useStyles = makeStyles()(theme => {
+    return {
+        container: {
+            backgroundColor: theme.palette.ui01,
+            boxSizing: 'border-box',
+            color: theme.palette.text01,
+            height: '100%',
+            overflowY: 'auto',
+            padding: '24px',
+            width: '100%',
 
-const charCountStyle: React.CSSProperties = {
-    fontSize: 11,
-    color: '#a1a1aa',
-    marginTop: 6,
-    textAlign: 'left'
-};
+            [theme.breakpoints.down(COMPACT_MAX_WIDTH)]: {
+                padding: '16px'
+            }
+        },
 
-const charCountErrorStyle: React.CSSProperties = {
-    fontSize: 11,
-    color: '#f87171',
-    marginTop: 6,
-    textAlign: 'left'
-};
+        header: {
+            alignItems: 'center',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '12px',
+            justifyContent: 'space-between',
+            marginBottom: '20px'
+        },
+
+        actions: {
+            alignItems: 'center',
+            display: 'flex',
+            gap: '8px',
+            marginLeft: 'auto'
+        },
+
+        title: {
+            ...theme.typography.heading6,
+            margin: 0
+        },
+
+        error: {
+            color: theme.palette.textError,
+            marginBottom: '12px'
+        },
+
+        grid: {
+            display: 'grid',
+            gap: '16px',
+
+            // `min(200px, 100%)` rather than a bare 200px: below that width the track keeps its
+            // 200px floor and pushes the grid into horizontal overflow, clipping cards on a phone.
+            gridTemplateColumns: 'repeat(auto-fill, minmax(min(200px, 100%), 1fr))'
+        },
+
+        refreshButton: {
+            '& svg': {
+                fill: theme.palette.text02
+            }
+        },
+
+        refreshButtonBusy: {
+            opacity: 0.5,
+            pointerEvents: 'none'
+        },
+
+        addButton: {
+            display: 'none',
+
+            [theme.breakpoints.down(COMPACT_MAX_WIDTH)]: {
+                display: 'flex'
+            }
+        },
+
+        addCard: {
+            ...getWhiteboardCardStyles(theme),
+            alignItems: 'center',
+            borderStyle: 'dashed',
+            justifyContent: 'center',
+            textAlign: 'center',
+
+            [theme.breakpoints.down(COMPACT_MAX_WIDTH)]: {
+                display: 'none'
+            }
+        },
+
+        addIcon: {
+            fontSize: '28px',
+            lineHeight: 1
+        },
+
+        addLabel: {
+            marginTop: '8px'
+        },
+
+        addDescription: {
+            ...theme.typography.bodyShortRegularSmall,
+            color: theme.palette.text02,
+            marginTop: '4px'
+        }
+    };
+});
 
 interface IProps {
 
     /**
      * Whether the local participant can create new boards. True for
      * moderators only — non-moderators see the existing-boards grid but
-     * not the "Add Whiteboard" card or the create modal.
+     * not the "Add Whiteboard" card or the create dialog.
      */
     canCreate?: boolean;
 
@@ -70,7 +142,15 @@ interface IProps {
     onSelect?: () => void;
 }
 
+/**
+ * Grid of the session's whiteboards, with an entry point for creating one.
+ *
+ * @param {IProps} props - The component props.
+ * @returns {JSX.Element}
+ */
 const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
+    const { classes, cx } = useStyles();
+    const { t } = useTranslation();
     const dispatch = useDispatch();
     const whiteboardConfig = useSelector(
         (state: IReduxState) => state['features/base/config'].whiteboard || {}
@@ -82,15 +162,19 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
     // right now, not just the JWT-frozen members list which is captured
     // at JWT-mint time and misses anyone who joined the call afterwards.
     const remoteParticipants = useSelector(getRemoteParticipants);
+    const remoteParticipantsRef = useRef(remoteParticipants);
 
     const apiUrl = whiteboardConfig.apiUrl;
     const apiKey = whiteboardConfig.apiKey;
     // Per-user/session context comes from JWT custom claims minted by the
     // AAuti backend: context.user.{id,name} + context.metadata.{sessionId,
-    // sessionTitle, userRole, category, subCategory, instituteId, members}.
+    // sessionTitle, sessionOwnerId, sessionOwnerName, userRole, category,
+    // subCategory, instituteId, members}.
     // See getWaveBookJwtContext.
     const sessionId = jwtCtx?.sessionId;
     const sessionTitle = jwtCtx?.sessionTitle;
+    const sessionOwnerId = jwtCtx?.sessionOwnerId;
+    const sessionOwnerName = jwtCtx?.sessionOwnerName;
     const userId = jwtCtx?.userId || localParticipant?.id || '';
     const userName = jwtCtx?.userName || localParticipant?.name || 'User';
     const category = jwtCtx?.category;
@@ -98,13 +182,9 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
     const instituteId = jwtCtx?.instituteId;
     const members = jwtCtx?.members || [];
 
-
     const [ boards, setBoards ] = useState<IBoard[]>([]);
     const [ loading, setLoading ] = useState(false);
     const [ errorMsg, setErrorMsg ] = useState<string | null>(null);
-    const [ creating, setCreating ] = useState(false);
-    const [ newBoardName, setNewBoardName ] = useState('');
-    const [ submitting, setSubmitting ] = useState(false);
 
     // Resolved in functions.ts so the role vocabulary has a single home.
     const boardRole = resolveWhiteboardCallerRole(jwtCtx, canCreate);
@@ -119,7 +199,7 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
 
     const loadBoards = useCallback(async () => {
         if (!apiUrl || !apiKey) {
-            setErrorMsg('Whiteboard API not configured');
+            setErrorMsg(t('whiteboard.errorNotConfigured'));
 
             return;
         }
@@ -153,6 +233,15 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                 params.set('seedTitle', sessionTitle);
             }
 
+            // The session's assigned instructor owns a provisioned board, so
+            // an admin who opens the whiteboard first doesn't take it.
+            if (sessionOwnerId) {
+                params.set('seedOwnerId', sessionOwnerId);
+            }
+            if (sessionOwnerName) {
+                params.set('seedOwnerName', sessionOwnerName);
+            }
+
             // Provisioning INTENT, separate from x-user-role (which says who
             // the caller is). In a call the board is always wanted when the
             // session has none, so moderators always ask; the service still
@@ -167,15 +256,23 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
 
             setBoards(Array.isArray(list) ? list : []);
         } catch (err: any) {
-            setErrorMsg(err?.message || 'Failed to load boards');
+            setErrorMsg(err?.message || t('whiteboard.errorLoadFailed'));
         } finally {
             setLoading(false);
         }
-    }, [ apiUrl, apiKey, sessionId, sessionTitle, category, subCategory, instituteId, canCreate, headers ]);
+    }, [ apiUrl, apiKey, sessionId, sessionTitle, sessionOwnerId, sessionOwnerName, category, subCategory,
+        instituteId, canCreate, headers, t ]);
 
     useEffect(() => {
         loadBoards();
     }, [ loadBoards ]);
+
+    // The create dialog captures handleCreate when it opens, so the roster has to be read at
+    // submit time instead: anyone who joins while the moderator is still typing a name must
+    // still end up in the seeded users[].
+    useEffect(() => {
+        remoteParticipantsRef.current = remoteParticipants;
+    }, [ remoteParticipants ]);
 
     const handleSelect = useCallback((board: IBoard) => {
         const boardId = board._id || board.id;
@@ -189,18 +286,15 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
         }
     }, [ dispatch, onSelect ]);
 
-    const handleCreate = useCallback(async () => {
-        const title = newBoardName.trim();
-
+    const handleCreate = useCallback(async (title: string) => {
         if (!title || !apiUrl) {
             return;
         }
-        if (title.length < 3) {
-            setErrorMsg('Title must be at least 3 characters');
+        if (title.length < BOARD_NAME_MIN_LENGTH) {
+            setErrorMsg(t('whiteboard.errorTitleTooShort', { min: BOARD_NAME_MIN_LENGTH }));
 
             return;
         }
-        setSubmitting(true);
         setErrorMsg(null);
         try {
             // Seed users[] from three sources, deduped by userId:
@@ -222,7 +316,7 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
             // create time. Without this the Members panel renders only
             // the colored-initials badge — the user.avatar field stays
             // empty until something else updates it.
-            const users: Array<{ userId: string; name: string; role: string; avatar?: string; }> = [];
+            const users: Array<{ avatar?: string; name: string; role: string; userId: string; }> = [];
             const seen = new Set<string>();
 
             if (userId) {
@@ -248,13 +342,14 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                 });
             });
 
-            remoteParticipants.forEach((p: IParticipant) => {
+            remoteParticipantsRef.current.forEach((p: IParticipant) => {
                 // Skip the whiteboard fake-participant and anyone we
                 // already added from sources 1/2.
                 if (p.fakeParticipant) {
                     return;
                 }
                 const externalId = p.jwtId;
+
                 if (!externalId || seen.has(externalId)) {
                     return;
                 }
@@ -305,176 +400,61 @@ const WhiteboardPicker = ({ canCreate = false, onSelect }: IProps) => {
                 }
                 onSelect?.();
             } else {
-                setErrorMsg(json?.error || json?.message || 'Failed to create board');
+                setErrorMsg(json?.error || json?.message || t('whiteboard.errorCreateFailed'));
             }
         } catch (err: any) {
-            setErrorMsg(err?.message || 'Failed to create board');
-        } finally {
-            setSubmitting(false);
+            setErrorMsg(err?.message || t('whiteboard.errorCreateFailed'));
         }
-    }, [ newBoardName, apiUrl, sessionId, category, subCategory, instituteId, userId, userName, members, remoteParticipants, headers, dispatch, onSelect ]);
+    }, [ apiUrl, sessionId, category, subCategory, instituteId, userId, userName, localParticipant?.avatarURL,
+        members, headers, dispatch, onSelect, t ]);
+
+    const handleOpenCreate = useCallback(() => {
+        dispatch(openDialog('WhiteboardCreateDialog', WhiteboardCreateDialog, { onSubmit: handleCreate }));
+    }, [ dispatch, handleCreate ]);
 
     return (
-        <div
-            style = {{
-                padding: 24,
-                height: '100%',
-                width: '100%',
-                overflowY: 'auto',
-                background: '#18181b',
-                color: '#fafafa',
-                boxSizing: 'border-box'
-            }}>
-            <div
-                style = {{ display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 12,
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: 20 }}>
-                <h2 style = {{ margin: 0, fontSize: 18 }}>Select a whiteboard</h2>
-                <button
-                    disabled = { loading }
-                    onClick = { loadBoards }
-                    style = {{
-                        background: 'transparent',
-                        color: '#a1a1aa',
-                        border: '1px solid #3f3f46',
-                        borderRadius: 6,
-                        padding: '6px 12px',
-                        cursor: 'pointer'
-                    }}>
-                    { loading ? 'Loading…' : 'Refresh' }
-                </button>
+        <div className = { classes.container }>
+            <div className = { classes.header }>
+                <h2 className = { classes.title }>{ t('whiteboard.pickerTitle') }</h2>
+                <div className = { classes.actions }>
+                    <ClickableIcon
+                        accessibilityLabel = { t('whiteboard.refresh') }
+                        className = { cx(classes.refreshButton, loading && classes.refreshButtonBusy) }
+                        icon = { IconReload }
+                        onClick = { loadBoards } />
+                    { canCreate && (
+                        <Button
+                            accessibilityLabel = { t('whiteboard.addBoard') }
+                            className = { classes.addButton }
+                            icon = { IconPlus }
+                            onClick = { handleOpenCreate } />
+                    )}
+                </div>
             </div>
 
-            { errorMsg && (
-                <div style = {{ color: '#f87171', marginBottom: 12 }}>{ errorMsg }</div>
-            )}
+            { errorMsg && <div className = { classes.error }>{ errorMsg }</div> }
 
-            <div
-                style = {{
-                    display: 'grid',
-
-                    // `min(200px, 100%)` rather than a bare 200px: below that width the track
-                    // would keep its 200px floor and push the grid into horizontal overflow,
-                    // which is what clips the cards on a phone-width panel.
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(min(200px, 100%), 1fr))',
-                    gap: 16
-                }}>
+            <div className = { classes.grid }>
                 { canCreate && (
-                    <div
-                        onClick = { () => setCreating(true) }
-                        style = {{
-                            ...cardStyle,
-                            borderStyle: 'dashed',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            textAlign: 'center'
-                        }}>
-                        <div style = {{ fontSize: 28, lineHeight: 1 }}>+</div>
-                        <div style = {{ marginTop: 8 }}>Add Whiteboard</div>
-                        <div style = {{ color: '#a1a1aa', fontSize: 12, marginTop: 4 }}>Create new whiteboard</div>
-                    </div>
+                    <button
+                        className = { classes.addCard }
+                        onClick = { handleOpenCreate }
+                        type = 'button'>
+                        <span className = { classes.addIcon }>+</span>
+                        <span className = { classes.addLabel }>{ t('whiteboard.addBoard') }</span>
+                        <span className = { classes.addDescription }>
+                            { t('whiteboard.addBoardDescription') }
+                        </span>
+                    </button>
                 )}
 
-                { boards.map(b => (
-                    <div
-                        key = { b._id || b.id }
-                        onClick = { () => handleSelect(b) }
-                        style = { cardStyle }
-                        title = { b.title || b.name || b._id || b.id }>
-                        <div style = { cardTitleStyle }>{ b.title || b.name || 'Untitled' }</div>
-                        { b.description && (
-                            <div style = {{ color: '#d4d4d8', fontSize: 12, marginTop: 4 }}>
-                                { b.description }
-                            </div>
-                        )}
-                        <div style = {{ color: '#a1a1aa', fontSize: 11, marginTop: 6 }}>
-                            { b.updatedAt ? `Updated ${new Date(b.updatedAt).toLocaleString()}` : (b._id || b.id) }
-                        </div>
-                    </div>
+                { boards.map(board => (
+                    <WhiteboardBoardCard
+                        board = { board }
+                        key = { board._id || board.id }
+                        onSelect = { handleSelect } />
                 ))}
             </div>
-
-            { creating && canCreate && (
-                <div
-                    style = {{
-                        position: 'fixed',
-                        inset: 0,
-                        background: 'rgba(0,0,0,0.6)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: 16,
-                        boxSizing: 'border-box',
-
-                        // Over the filmstrip ($filmstripVideosZ = 251), which drew its tiles
-                        // across this dialog at the old value. Matches BaseDialog's backdrop.
-                        zIndex: 301
-                    }}>
-                    <div
-                        style = {{
-                            background: '#27272a',
-                            padding: 24,
-                            borderRadius: 8,
-
-                            // minWidth here outgrew a phone viewport and clipped the dialog
-                            // off the left edge; width + maxWidth keeps it centred instead.
-                            width: 320,
-                            maxWidth: '100%',
-                            boxSizing: 'border-box'
-                        }}>
-                        <div style = {{ marginBottom: 12, fontWeight: 600 }}>New Whiteboard</div>
-                        <input
-                            autoFocus = { true }
-                            maxLength = { 15 }
-                            onChange = { e => setNewBoardName(e.target.value.slice(0, 15)) }
-                            placeholder = 'Board name'
-                            style = {{
-                                width: '100%',
-                                padding: 8,
-                                background: '#18181b',
-                                color: '#fafafa',
-                                border: '1px solid #3f3f46',
-                                borderRadius: 4,
-                                boxSizing: 'border-box'
-                            }}
-                            value = { newBoardName } />
-                        <div style = { newBoardName.trim().length < 3 ? charCountErrorStyle : charCountStyle }>
-                            { newBoardName.trim().length }/15 characters (min 3)
-                        </div>
-                        <div style = {{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                            <button
-                                disabled = { submitting }
-                                onClick = { () => { setCreating(false); setNewBoardName(''); } }
-                                style = {{
-                                    background: 'transparent',
-                                    color: '#fafafa',
-                                    border: '1px solid #3f3f46',
-                                    borderRadius: 4,
-                                    padding: '6px 14px',
-                                    cursor: 'pointer'
-                                }}>
-                                Cancel
-                            </button>
-                            <button
-                                disabled = { newBoardName.trim().length < 3 || submitting }
-                                onClick = { handleCreate }
-                                style = {{
-                                    background: '#4f46e5',
-                                    color: '#fff',
-                                    border: 'none',
-                                    borderRadius: 4,
-                                    padding: '6px 14px',
-                                    cursor: 'pointer'
-                                }}>
-                                { submitting ? 'Creating…' : 'Create' }
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

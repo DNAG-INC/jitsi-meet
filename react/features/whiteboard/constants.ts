@@ -89,3 +89,9 @@ export const USER_LIMIT_THRESHOLD = 5;
  * @type {string}
  */
 export const WHITEBOARD_PATH_NAME = 'static/whiteboard.html';
+
+/**
+ * Length bounds enforced on a board name when creating a whiteboard.
+ */
+export const BOARD_NAME_MIN_LENGTH = 3;
+export const BOARD_NAME_MAX_LENGTH = 15;
