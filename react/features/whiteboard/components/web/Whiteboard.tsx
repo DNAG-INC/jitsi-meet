@@ -12,23 +12,6 @@ const WhiteboardEmbed = lazy(() =>
     import('@dnag-inc/whiteboard-sdk').then(m => ({ default: m.WhiteboardEmbed }))
 );
 
-// Forward-declare props that are present on `feat/recorder-mode` of the
-// SDK but haven't shipped in the installed package version yet. Once
-// the SDK is bumped to a release including those props, this
-// augmentation is a no-op duplicate (TS allows that for interfaces).
-declare module '@dnag-inc/whiteboard-sdk' {
-    interface WhiteboardEmbedProps {
-
-        /** Triggers startLeading() once on mount when the local user is the moderator. */
-        autoLeadOnMount?: boolean;
-
-        /** Tenant-customisable top-left header content rendered over the canvas. */
-        boardHeader?: React.ReactNode;
-
-        /** True for Jibri's headless Chrome. Forces follow + bypasses membership check. */
-        isRecorder?: boolean;
-    }
-}
 // SDK ships a self-contained stylesheet scoped under `.wavebook-sdk` so
 // Jitsi's own CSS (and vice versa) can't override the board's look.
 import '@dnag-inc/whiteboard-sdk/styles.css';
@@ -45,7 +28,8 @@ import {
     getCollabDetails,
     getWaveBookJwtContext,
     isWhiteboardOpen,
-    isWhiteboardVisible
+    isWhiteboardVisible,
+    resolveWhiteboardCallerRole
 } from '../../functions';
 
 import NoWhiteboardError from './NoWhiteboardError';
@@ -88,6 +72,10 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
     const localParticipant = useSelector(getLocalParticipant);
     const isLocalModerator = useSelector(isLocalParticipantModerator);
     const jwtCtx = useSelector(getWaveBookJwtContext);
+    // Same role the picker asserts to the service. Moderators are the teaching
+    // side, so they may manage board access whether or not they opened the
+    // board first (and so own it); the service checks this role too.
+    const hostRole = resolveWhiteboardCallerRole(jwtCtx, isLocalModerator);
     const localParticipantId = localParticipant?.id || '';
     const localParticipantName = jwtCtx?.userName || localParticipant?.name || defaultRemoteDisplayName || 'Fellow Jitster';
 
@@ -315,6 +303,7 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                                     </>
                                                 }
                                                 boardId = { boardId! }
+                                                canManageAccess = { isLocalModerator }
                                                 connection = {{
                                                     // REST + WS both target the API host (whiteboard-
                                                     // apiqa.aauti.com), NOT the iframe-page host
@@ -348,6 +337,7 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                                     // Jitsi display name).
                                                     name: isJibriRecorder ? 'Session Recorder' : localParticipantName,
                                                     avatarUrl: userAvatar || undefined,
+                                                    hostRole,
                                                     role: 'editor'
                                                 }} />
                                         </div>
