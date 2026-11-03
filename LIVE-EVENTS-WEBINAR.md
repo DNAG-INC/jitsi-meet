@@ -94,9 +94,25 @@ Settings they change but do not code: `always_visitors_enabled = false`,
 `VISITORS_XMPP_SERVER`, `VISITORS_MAX_VISITORS_PER_NODE=250`,
 `JICOFO_VISITORS_REQUIRE_MUC_CONFIG=1`.
 
-They are also fixing three production issues that matter with or without
-webinars: JVB and Jicofo memory limits (both currently OOM-prone), the main
-prosody CPU cap, and the Jicofo bridge cap (30 → ~120).
+They are also changing nine infrastructure settings. The first four matter with
+or without webinars — production has never hit them only because its busiest
+moment in 15 days was four participants.
+
+| Component | Live on prod today | Change |
+|---|---|---|
+| JVB memory | Heap 3 GB, pod limit 2Gi | Limit 4Gi, CPU 4 — pod is OOM-killed under load |
+| Jicofo memory | Heap 3 GB, pod limit 512Mi | Heap 2 GB, limit 3Gi — same OOM risk |
+| Jicofo bridge cap | `max-bridge-participants=30` | ~120; 500 viewers would otherwise need 17 bridges |
+| Main prosody | CPU limit 500m | 1 vCPU, 1Gi — single-threaded, half a core throttles joins |
+| Visitor prosody | None | 2–3 pods, 1 vCPU / 1Gi each, on the signalling node |
+| JVB scaling | HPA on CPU, min 2 pods | 6 pods, 30 min before each webinar — HPA reacts too late to a join rush |
+| JVB node pool | 1 node running, Terraform min 2 | Reconcile to min 2 (drift) |
+| s2s | Disabled | Enabled on 5269, whitelisted to visitor domains only |
+| Gateway / LB | GKE L7 Gateway to web pod | No change; routing is inside nginx |
+
+The JVB scaling row is worth noting on our side: six pods have to be up **30
+minutes before** a webinar starts, which means something has to know a webinar
+is about to begin. That is a scheduling dependency nobody has claimed yet.
 
 ---
 
@@ -297,7 +313,7 @@ actually loaded.
 
 ---
 
-## 9. Test plan
+## 9. Test plan and rollout
 
 Infra's scenarios, run on nonprod `jitsi-sandbox`. Scenarios 1, 9 and 10 must
 pass before production. Scenarios 1–8 need our Phase 1 tokens.
@@ -315,6 +331,28 @@ pass before production. Scenarios 1–8 need our Phase 1 tokens.
 | 9 | 500 receive-only bots, 5 presenters, joining within 5 min | No OOM, prosody CPU under 70%, JVB stress under 0.8 |
 | 10 | `helm rollback` | Classes work, visitor pods gone |
 
+### Their schedule
+
+Two to three weeks from start, staged so regular classes are protected at every
+step. **Week 2 is the one that binds us** — that is when they run scenarios 1–8
+against our tokens, so Phase 1 has to be done before it.
+
+1. **Week 1** — prod-safe fixes: JVB and Jicofo memory, prosody CPU, node-pool drift. No webinar features yet
+2. **Week 1–2** — build on nonprod: webinar plugin, moderator plugin update, visitor prosody, visitor-node token auth, nginx routes
+3. **Week 2** — test scenarios 1–8 **with our new tokens**
+4. **Week 2–3** — load test (scenario 9), then fix the seat number we sell
+5. **Week 3** — prod, in a low-traffic window, scenario 1 run straight after
+
+Our phases map onto that as: Phase 0 and Phase 1 before their week 2, Phase 2
+alongside it, Phase 3 after their week-2–3 load test hands us a seat number,
+Phase 4 any time.
+
+**Rollback:** `helm rollback jitsi <previous revision>` — production is on
+revision 13 today. That removes the visitor pods and turns s2s off; classes
+return to today's behaviour and webinar rooms become ordinary rooms with no
+visitor split. Nothing we ship needs reverting alongside it: a `webinar/`
+prefixed room with no plugin behind it is just a room.
+
 ---
 
 ## 10. Open decisions
@@ -324,6 +362,7 @@ pass before production. Scenarios 1–8 need our Phase 1 tokens.
 | Rebase `bookingMode` onto `main`, or use an existing `Schedule` field | Us | Phase 1 room naming, and infra's week-2 testing |
 | Room-name form: iframe `roomName` or `/webinar/<id>` URL | Us, confirm with infra | Phase 1 |
 | Real audience size | Infra load test | Phase 3 seat cap |
+| Who triggers the JVB scale-up 30 min before a webinar | Unclaimed | Nothing yet, but it breaks the first real webinar if nobody owns it |
 | Workshops where attendees are meant to talk | Product | Nothing yet |
 
 The audience size is worth pressing early even though it only gates Phase 3.
@@ -364,6 +403,7 @@ answers change what we build.
 
 | Date | Change | Why |
 |---|---|---|
+| 2026-11-03 | Added infra's full nine-row change table, their five-step rollout schedule and the rollback procedure. Added "who triggers the JVB scale-up" as an unclaimed decision | Re-checked our plan against their doc; these were in theirs and missing from ours. Their week 2 is when Phase 1 must be done |
 | 2026-11-03 | Rewritten against infra's 30 Oct response. Moderator claim changed from "move" to "send in both places"; `sub` change and doors-open gating dropped; scoping plugin corrected from disco field to room metadata | Their `mod_token_moderation` reads only the top-level claim, `enable_domain_verification` is off, and Jicofo 1189 stopped reading the disco field |
 | 2026-11-03 | Phase 0 added as a blocker in its own right | `bookingMode` sits on a branch 149 commits behind `main`, up from 93 — room naming cannot be written without a webinar marker |
 | 2026-11-03 | Added §4 (what DevOps builds), §9 (test plan), §10 (open decisions), §12 (this log) | Infra's response gave us their scope, their scenarios and their timeline |
