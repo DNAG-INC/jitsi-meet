@@ -166,18 +166,38 @@ That branch carries 3 commits of its own and is **149 behind `main`** — it was
 93 behind in early October, so the gap is widening, and there is no database
 with data to walk it against.
 
-1. **Rebase and land `bookingMode` on `main`.** Correct, and the right home for
-   the field. Cost is the rebase and whatever those 3 commits drag with them.
-2. **Use a marker already on `main`.** `Schedule` carries `typeTag`, `subType`
-   and `classTypes`. If one can carry "webinar" cleanly, Phase 1 unblocks today
-   and `bookingMode` lands later without holding anything up.
+**Decided 3 Nov: the branch has to land. There is no shortcut.**
 
-Option 2 deserves half an hour before committing to option 1, because Phase 1
-is what infra need for week-2 testing and rebasing a 149-behind branch is not a
-half-day job.
+Reusing an existing field (`typeTag`, `subType`, `classTypes`) looked like a way
+to unblock room naming today. It isn't. The branch is not where the marker
+lives — it is the whole live-events product, and without it there is no webinar
+to put in a webinar room.
 
-- [ ] Decide: rebase `bookingMode`, or use an existing field
-- [ ] If rebasing, agree the owner and the date
+What the two relevant commits actually carry:
+
+| `f136cd6bc` — backend | `d33d87198` — studio + marketplace |
+|---|---|
+| `bookingMode` + `seatPrice` migration | ~20 new event components: reserve card, seat picker, date strip, sold-out / live / ended cards, mobile CTA |
+| New `adhoc-event-lock` domain module | `_event-container.tsx`, 390 lines |
+| Event pricing (`adhoc-card-price`, `adhoc-line-price`) | Event detail routes and purchase gates |
+| Cart, order, enrollment, package and refund changes | |
+| `schedule.service.ts`, 459 lines | |
+
+A third commit on the branch, `dea53a829` (course batch tabs), is unrelated to
+live events and should not come with it.
+
+Two things worth knowing before the rebase:
+
+`seatPrice` already exists there — "the fixed price of one seat on one date" —
+so Phase 3's seat cap has a price model waiting rather than needing one
+invented.
+
+The event UI on that branch predates visitor mode, so its buyer-facing copy
+still describes a group session. The Phase 3 copy work applies to those new
+components, not to the old `event-facts.ts`.
+
+- [ ] Agree who owns the rebase of `f136cd6bc` and `d33d87198` onto `main`
+- [ ] Leave `dea53a829` behind, or land it separately on its own merits
 
 ### Phase 1 — Unblock DevOps testing
 
@@ -469,6 +489,7 @@ answers change what we build.
 
 | Date | Change | Why |
 |---|---|---|
+| 2026-11-03 | **Phase 0 decided: the live-events branch has to land, there is no shortcut.** Reusing an existing `Schedule` field was investigated and rejected | The branch is not where the marker lives — it carries the whole product: `seatPrice`, the event-lock module, event pricing, cart/order/refund changes and ~20 marketplace components. Without it nothing can create or sell a webinar |
 | 2026-11-03 | **Three items withdrawn** against infra's 3 Nov *Infra Changes* doc: the `context.user.moderator` claim, short-lived attendee tokens, and the room-name form question. Added the exact room-name spec, the `BASE_TAG` bump, and our answer on visitor chat | Their plugin accepts the top-level claim we already send, 24 h tokens are now explicitly OK, and they specified the room name outright. Only room name and seat cap are left on us |
 | 2026-11-03 | Recorded the cause of the 2 Nov sandbox outage: random passwords in the chart restart prosody and jicofo on every sync, and jicofo lost the race | Confirms it was the redeploy, not our commits and not the values-file switch. Infra own the fix (fixed passwords + a jicofo liveness probe) |
 | 2026-11-03 | Added infra's full nine-row change table, their five-step rollout schedule and the rollback procedure. Added "who triggers the JVB scale-up" as an unclaimed decision | Re-checked our plan against their doc; these were in theirs and missing from ours. Their week 2 is when Phase 1 must be done |
