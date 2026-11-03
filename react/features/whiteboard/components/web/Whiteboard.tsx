@@ -326,6 +326,10 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                                 key = { boardId }
                                                 onAiGenerate = { handleAiGenerate }
                                                 onError = { handleSdkError }
+
+                                                // Phone sheets (Board actions, Members, …) open over the whole
+                                                // meeting page, not squeezed into the board tile.
+                                                overlayMode = 'viewport'
                                                 style = {{ width: '100%', height: '100%' }}
                                                 user = {{
                                                     id: userId,
