@@ -4,10 +4,18 @@
 the change log (§12). If something here contradicts a Slack thread or an older
 doc, this file wins.
 
-Status: **not started.** Booking half built on `aauti-platform` branch
-`feature/adhoc-live-events` (unmerged, **149 behind main**, no automated tests).
-Room half does not exist. Infra have accepted the approach and estimate two to
-three weeks to production.
+Status: **infra side built, not deployed.** Visitor mode is built on
+`DNAG-PlatformEngineering/aauti-jitsi` branch `aauti-jitsi-sandbox` (commit
+`75c4b9e`), switched on by `webinar.enabled: true` in `values-sandbox.yaml`
+only — prod and devvideo render byte-identical to `main`. Sandbox ArgoCD still
+targets `main`; deploying means repointing it at the branch.
+
+Booking half built on `aauti-platform` branch `feature/adhoc-live-events`
+(unmerged, **149 behind main**, no automated tests).
+
+**Two app changes left: the webinar room name and the seat cap.** Everything
+else infra originally asked us for is either already satisfied by the current
+token or has been withdrawn — see §5.
 
 Related:
 - `aauti-platform/docs/adhoc-live-events.md` — the booking design (Prashanth Ch, Oct 2026)
@@ -189,15 +197,26 @@ whether the prefix rides the iframe `roomName` or the `/webinar/<roomId>` URL �
 we embed, so `roomName`, but `getJoinUrl()` builds from the same value and must
 agree. *Needs Phase 0.*
 
-**3. Moderator claim in both places.** Keep `moderator: config.isModerator` at
-the payload root, add `context.user.moderator`. Old tokens keep working.
-Presenter tokens also need a stable `context.user.id`, which we already set from
-`config.userId` — nothing to do there. **No blockers; can start now.**
+**3. ~~Moderator claim in both places.~~ Withdrawn 3 Nov.** Their updated
+`mod_token_moderation` accepts the top-level `moderator` claim we already send,
+and their JWT checklist marks `context.user.moderator` as *"Not sent; not
+needed"*. `context.user.id` is already a stable string from `config.userId`.
+The presenter token is **done as it stands** — no change.
 
-- [ ] Moderator claim in both places
+**Exact room-name spec**, from their 3 Nov doc:
+
+| | Value |
+|---|---|
+| iframe `roomName` | `webinar/<sessionId>-aauti-<env>` |
+| JWT `room` claim | `<sessionId>-aauti-<env>` — **no** prefix, or `*` |
+
+Keep the `-aauti-<env>` suffix: **Jibri's auto-recording matches on it.** That
+contradicts `JITSI-JWT-FLOW.md §2.2`, which calls the suffix a historical
+artifact nothing reads. Infra's version is the live one; the flow doc is wrong
+and should be corrected.
+
 - [ ] Booking mode resolved at join
-- [ ] Room naming with the `webinar/` prefix
-- [ ] Confirm with infra which room-name form they test against
+- [ ] Room naming with the `webinar/` prefix on `roomName` only
 
 ### Phase 2 — Attendee join path
 
@@ -205,9 +224,11 @@ Visitor nodes reject anyone without a token, so every attendee needs one. We
 already mint a token per caller in `getJoinInfo`, so the work is shape and size,
 not a new flow.
 
-**Short-lived attendee tokens.** `generateJwtToken` signs with a hardcoded
-`expiresIn: "24h"`. Infra want event length plus ~30 minutes. The session end
-time has to be threaded into the signing call; untimed sessions need a default.
+**~~Short-lived attendee tokens.~~ Withdrawn 3 Nov.** The 30 Oct response asked
+for event length plus 30 minutes; the 3 Nov doc marks attendee tokens *"Already
+done — every join gets a token, valid 24 h"* and lists `exp` as OK. The only
+requirement now is that the token **outlasts** the event, which 24 h does. No
+change.
 
 **Slim the token payload.** `getJoinInfo` builds `context.metadata.members[]`
 from the SP, co-instructors and **every enrolment**, uncapped, and the token
@@ -216,9 +237,34 @@ at 500 it is hopeless. Presenters only for webinars, or drop the pre-seed and
 let the board fetch its own roster. A large ordinary class already trips this,
 so it is worth fixing regardless.
 
-- [ ] Thread session end time into `generateJwtToken`, replace the 24h constant
 - [ ] Cap or drop `context.metadata.members[]` for webinar tokens
 - [ ] Check token length against a 500-seat webinar before testing
+
+### Also ours, from the 3 Nov doc
+
+**Bump `BASE_TAG`.** `docker-build/Dockerfile:21` still pins
+`stable-11146-2` while the client is 11248, so the image template set and the
+client disagree. Infra flag it as "when convenient", but it is ours and it is
+one line.
+
+**Confirmed fine, nothing to do:** `include /config/nginx-custom/*.conf;` is
+present at `docker-build/rootfs/defaults/meet.conf:48`, and the stock visitor
+client code is intact — `getVisitorOptions` at
+[`base/conference/functions.ts:307`](react/features/base/conference/functions.ts#L307)
+and `redirect` at
+[`base/conference/actions.any.ts:1082`](react/features/base/conference/actions.any.ts#L1082).
+
+**One answer infra need from us, with a caveat.** They ask us to confirm
+nothing hides raise hand, the visitor notice or the promote/demote prompts.
+Raise hand survives: studio's toolbar whitelist includes `raisehand`, and
+Jitsi intersects it with `VISITORS_MODE_BUTTONS`. **Chat does not.** Studio
+drops Jitsi's chat in favour of the Aauti session feed, and chat plus raise
+hand are the only two things a visitor has. A webinar attendee would therefore
+have one of the two. Whether that matters depends on whether the Aauti feed is
+reachable for a visitor — a product call, not a bug.
+
+- [ ] Bump `BASE_TAG` to `stable-11248`
+- [ ] Decide whether a visitor needs Jitsi chat, or whether the Aauti feed covers it
 
 ### Phase 3 — Make it sellable
 
@@ -347,7 +393,26 @@ Our phases map onto that as: Phase 0 and Phase 1 before their week 2, Phase 2
 alongside it, Phase 3 after their week-2–3 load test hands us a seat number,
 Phase 4 any time.
 
-**Rollback:** `helm rollback jitsi <previous revision>` — production is on
+**Sandbox deploy, as of 3 Nov:** point the sandbox ArgoCD app's Target Revision
+at `aauti-jitsi-sandbox` (path `.`, values file `values-sandbox.yaml`) and sync.
+Rolling back is the same switch back to `main`.
+
+**Watch the sync.** Random passwords in the chart restart prosody and jicofo on
+every deploy, and jicofo can lose that race — that is what caused the 2 Nov
+sandbox outage we spent an evening on, surfacing to us as
+`connection.conferenceRequestFailed` with no conference ever created. It can
+recur on any sync until infra land fixed passwords and a jicofo liveness probe.
+The check straight after a sync:
+
+```
+kubectl -n jitsi-sandbox logs deploy/sandbox-jitsi-meet-jicofo -c jitsi-meet \
+  --since=10m | grep -E "Connected\.|conflict|closed on error"
+```
+
+`Connected.` with no `conflict` is good; a `conflict` needs an ArgoCD Restart on
+the jicofo deployment alone.
+
+**Prod rollback:** `helm rollback jitsi <previous revision>` — production is on
 revision 13 today. That removes the visitor pods and turns s2s off; classes
 return to today's behaviour and webinar rooms become ordinary rooms with no
 visitor split. Nothing we ship needs reverting alongside it: a `webinar/`
@@ -359,8 +424,9 @@ prefixed room with no plugin behind it is just a room.
 
 | Decision | Owner | Blocks |
 |---|---|---|
-| Rebase `bookingMode` onto `main`, or use an existing `Schedule` field | Us | Phase 1 room naming, and infra's week-2 testing |
-| Room-name form: iframe `roomName` or `/webinar/<id>` URL | Us, confirm with infra | Phase 1 |
+| Rebase `bookingMode` onto `main`, or use an existing `Schedule` field | Us | Phase 1 room naming, and infra's scenario 9 |
+| ~~Room-name form~~ — **answered 3 Nov**: prefix on the iframe `roomName`, JWT `room` claim unprefixed | — | — |
+| Does a visitor need Jitsi chat, or does the Aauti feed cover it? | Product | Infra's visitor-UI sign-off |
 | Real audience size | Infra load test | Phase 3 seat cap |
 | Who triggers the JVB scale-up 30 min before a webinar | Unclaimed | Nothing yet, but it breaks the first real webinar if nobody owns it |
 | Workshops where attendees are meant to talk | Product | Nothing yet |
@@ -403,6 +469,8 @@ answers change what we build.
 
 | Date | Change | Why |
 |---|---|---|
+| 2026-11-03 | **Three items withdrawn** against infra's 3 Nov *Infra Changes* doc: the `context.user.moderator` claim, short-lived attendee tokens, and the room-name form question. Added the exact room-name spec, the `BASE_TAG` bump, and our answer on visitor chat | Their plugin accepts the top-level claim we already send, 24 h tokens are now explicitly OK, and they specified the room name outright. Only room name and seat cap are left on us |
+| 2026-11-03 | Recorded the cause of the 2 Nov sandbox outage: random passwords in the chart restart prosody and jicofo on every sync, and jicofo lost the race | Confirms it was the redeploy, not our commits and not the values-file switch. Infra own the fix (fixed passwords + a jicofo liveness probe) |
 | 2026-11-03 | Added infra's full nine-row change table, their five-step rollout schedule and the rollback procedure. Added "who triggers the JVB scale-up" as an unclaimed decision | Re-checked our plan against their doc; these were in theirs and missing from ours. Their week 2 is when Phase 1 must be done |
 | 2026-11-03 | Rewritten against infra's 30 Oct response. Moderator claim changed from "move" to "send in both places"; `sub` change and doors-open gating dropped; scoping plugin corrected from disco field to room metadata | Their `mod_token_moderation` reads only the top-level claim, `enable_domain_verification` is off, and Jicofo 1189 stopped reading the disco field |
 | 2026-11-03 | Phase 0 added as a blocker in its own right | `bookingMode` sits on a branch 149 commits behind `main`, up from 93 — room naming cannot be written without a webinar marker |
