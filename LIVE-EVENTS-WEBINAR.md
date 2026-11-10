@@ -4,18 +4,28 @@
 the change log (§12). If something here contradicts a Slack thread or an older
 doc, this file wins.
 
-Status: **infra side built, not deployed.** Visitor mode is built on
-`DNAG-PlatformEngineering/aauti-jitsi` branch `aauti-jitsi-sandbox` (commit
-`75c4b9e`), switched on by `webinar.enabled: true` in `values-sandbox.yaml`
-only — prod and devvideo render byte-identical to `main`. Sandbox ArgoCD still
-targets `main`; deploying means repointing it at the branch.
+Status as of 10 Nov: **app side built and pushed; infra side built, not
+deployed.**
 
-Booking half built on `aauti-platform` branch `feature/adhoc-live-events`
-(unmerged, **149 behind main**, no automated tests).
+Visitor mode is built on `DNAG-PlatformEngineering/aauti-jitsi` branch
+`aauti-jitsi-sandbox` (commit `75c4b9e`), switched on by `webinar.enabled: true`
+in `values-sandbox.yaml` only — prod and devvideo render byte-identical to
+`main`. Sandbox ArgoCD still targets `main`; deploying means repointing it at
+the branch.
 
-**Two app changes left: the webinar room name and the seat cap.** Everything
-else infra originally asked us for is either already satisfied by the current
+Our work is on `aauti-platform` branch `feature/adhoc-live-events`, commit
+**`961527fbe`** (4 Nov), pushed to `origin`. Phases 1, 2 and 4 are all in that
+one commit. The branch also carries `d33d87198` (Prashanth Ch, 27 Oct), which
+built the live-event product itself — booking mode in the adhoc wizard, event
+pages, reserve flow, cart and checkout lines, schema.org Event. **Our work
+lands on that branch**, never on `main`.
+
+**One app change left: the seat cap (Phase 3), blocked on infra's load test.**
+Everything else infra originally asked for is either satisfied by the current
 token or has been withdrawn — see §5.
+
+Nothing has been tested against a running webinar, because nothing is deployed.
+Every "Done" below means written, typechecked and pushed, not verified.
 
 Related:
 - `aauti-platform/docs/adhoc-live-events.md` — the booking design (Prashanth Ch, Oct 2026)
@@ -84,6 +94,50 @@ Three behaviours from infra's response that shape everything downstream:
 - **Freed slots never reopen.** Once the first visitor exists, every later joiner is a visitor even if a main-room participant leaves. The only way back is promotion.
 - **Promotion ignores the limit.** Approving a raised hand can take the main room above 30. Nothing in our accounting may hardcode 30.
 
+### Who is a presenter, and how it is decided
+
+Everybody opens the same address. The URL identifies the **room**; the token
+identifies the **person**. Each client calls our join endpoint and gets a token
+minted for that caller:
+
+```
+https://video-sandbox.aauti.com/webinar/<sessionId>-aauti-<env>?jwt=<per-user token>
+```
+
+`getJoinInfo` sets `isModerator: isHost || isSP`, where `isHost` is
+`isSP || isCoOrg || isCoInstructor || isInstituteAdmin || isAautiStaffJoiner`.
+That becomes the **top-level `moderator` claim**. Prosody's
+`mod_token_moderation` reads it and grants moderator rights; a buyer matches
+none of those roles and gets `moderator: false`. This logic predates the
+webinar work and was deliberately left alone — a webinar grants rights exactly
+as a class does.
+
+The webinar plugin then copies the presenter `context.user.id`s into the room's
+`moderators` list, which is what keeps them in the main room whatever the
+arrival order.
+
+**A join URL is a credential.** It carries that one person's identity and
+rights, so an instructor forwarding their link hands over moderator powers.
+Already true for ordinary classes; worth restating because "send everyone the
+webinar link" is the natural thing to assume and it is wrong.
+
+### The soft limit is not a presenter/attendee split
+
+Easy to misread. It is **not** "presenters in the main room, all buyers as
+visitors". Presenters are pinned, and then the first 30 *non*-presenters also
+land in the main room as ordinary participants with camera and mic available.
+Only arrival 31 onward becomes a visitor.
+
+So a live event with 25 buyers never enters visitor mode at all — the prefix is
+there, the plugin flags the room, nobody is routed anywhere. It behaves exactly
+like a normal group call.
+
+Infra's own scenario 2 states this ("35 users join → 30 in main room, 5
+visitors"), so it is their design rather than a defect. But if the product
+expects an event attendee to be watch-only, 30 is not that, and the knob is
+their `participantsSoftLimit`, not anything in our code. Raised with infra
+10 Nov; see §10.
+
 ---
 
 ## 4. What DevOps is building
@@ -150,30 +204,32 @@ plugin must set room **metadata** instead.
 
 | Phase | Delivers | Status | Gated by |
 |---|---|---|---|
-| 0 | A reliable marker distinguishing webinars from classes | Blocked | `bookingMode` on a branch 149 behind main |
-| 1 | Booking mode at join, room naming, moderator claim | Not started | Phase 0, for room naming only |
-| 2 | Short-lived attendee tokens, slimmer token payload | Not started | Phase 1 |
+| 0 | A reliable marker distinguishing webinars from classes | **Done 3 Nov** | — |
+| 1 | Booking mode at join, room naming, moderator claim | **Done, pushed** in `961527fbe` — untested | Nothing |
+| 2 | Short-lived attendee tokens, slimmer token payload | **Done, pushed** in `961527fbe` — untested | Nothing |
 | 3 | Server-side seat cap, buyer-facing copy | Blocked | Infra load test, their week 2–3 |
-| 4 | Visitor flag, participant count, `channelLastN` | Not started | Nothing |
+| 4 | Visitor flag, participant count, `channelLastN` | **Done, pushed** in `961527fbe` — untested | Nothing |
 
-### Phase 0 — Mark a webinar session
+### Phase 0 — Mark a webinar session — done 3 Nov
 
-We cannot name a room `webinar/<id>` until we can tell a webinar from a class,
-and the field that does that is stranded. No code to write; the most leverage.
+We cannot name a room `webinar/<id>` until we can tell a webinar from a class.
+`Schedule.bookingMode` is the field that does that, and it lives on
+`feature/adhoc-live-events` and nowhere else.
 
-`Schedule.bookingMode` exists on `feature/adhoc-live-events` and nowhere else.
-That branch carries 3 commits of its own and is **149 behind `main`** — it was
-93 behind in early October, so the gap is widening, and there is no database
-with data to walk it against.
+**The branch is no longer stranded.** `main` was merged into it on 3 Nov
+(`5c5f0368e`), so it is **0 commits behind** — it was 149 behind that morning
+and 93 in early October. Local and `origin` agree.
 
-**Decided 3 Nov: the branch has to land. There is no shortcut.**
+**Decided 3 Nov: we work on that branch.** Phase 1 and everything after it is
+written on `feature/adhoc-live-events`. There is no rebase to own and no
+cherry-pick to argue about — `bookingMode` is already in scope where we stand.
 
-Reusing an existing field (`typeTag`, `subType`, `classTypes`) looked like a way
-to unblock room naming today. It isn't. The branch is not where the marker
-lives — it is the whole live-events product, and without it there is no webinar
-to put in a webinar room.
+Reusing an existing field (`typeTag`, `subType`, `classTypes`) was investigated
+first and rejected. The branch is not where the marker lives — it is the whole
+live-events product, and without it there is no webinar to put in a webinar
+room.
 
-What the two relevant commits actually carry:
+What the two relevant commits carry, all of it available to us now:
 
 | `f136cd6bc` — backend | `d33d87198` — studio + marketplace |
 |---|---|
@@ -184,9 +240,10 @@ What the two relevant commits actually carry:
 | `schedule.service.ts`, 459 lines | |
 
 A third commit on the branch, `dea53a829` (course batch tabs), is unrelated to
-live events and should not come with it.
+live events. Working on the branch means it reaches `main` whenever the branch
+does, so it has to be judged on its own merits rather than quietly ride along.
 
-Two things worth knowing before the rebase:
+Two things worth knowing before Phase 1 starts:
 
 `seatPrice` already exists there — "the fixed price of one seat on one date" —
 so Phase 3's seat cap has a price model waiting rather than needing one
@@ -196,26 +253,30 @@ The event UI on that branch predates visitor mode, so its buyer-facing copy
 still describes a group session. The Phase 3 copy work applies to those new
 components, not to the old `event-facts.ts`.
 
-- [ ] Agree who owns the rebase of `f136cd6bc` and `d33d87198` onto `main`
-- [ ] Leave `dea53a829` behind, or land it separately on its own merits
+- [ ] Decide whether `dea53a829` merges with the branch or comes off it first
+- [ ] Keep merging `main` in as it moves, so the gap never reopens
 
 ### Phase 1 — Unblock DevOps testing
 
 Three changes, almost all in
 `aauti-platform/services/api/src/modules/session/providers/video-conference.service.ts`.
-Infra mark the first two as blocking their scenarios 1–8.
+Infra mark the first two as blocking their scenarios 1–8. All of it is written
+on `feature/adhoc-live-events`, where `bookingMode` already is.
 
-**1. Resolve booking mode at join.** `bookingMode` lives on `Schedule` and the
-join path never looks it up. `session.metadata` already carries
-`{ scheduleId, seriesId }`, denormalised by design, so this is one lookup — or
-write the mode into `session.metadata` at generation, which is the pattern that
-field exists for. *Needs Phase 0.*
+**1. Resolve booking mode at join. Done.** `getJoinInfo` already calls
+`attachSessionParents`, which walks session → series → schedule, so
+`bookingMode` was added to that select and to the `SessionParents` type. No
+extra query, and it reads correctly on sessions that already exist.
+Denormalising the mode into `session.metadata` at generation was the
+alternative; it would have needed a backfill for every event session already
+minted, so it was not taken.
 
-**2. Room naming.** `generateRoomId()` returns `${session.id}-aauti-${roomEnv}`
-today, no prefix. Webinar sessions gain the `webinar/` tenant prefix. Decide
-whether the prefix rides the iframe `roomName` or the `/webinar/<roomId>` URL —
-we embed, so `roomName`, but `getJoinUrl()` builds from the same value and must
-agree. *Needs Phase 0.*
+**2. Room naming. Done.** `generateRoomId()` is unchanged and still returns the
+bare `${session.id}-aauti-${roomEnv}`. A new
+`toClientRoomName(roomId, isWebinar)` puts the `webinar/` prefix on, and
+`getJoinInfo` now keeps two values apart: the prefixed name is what it returns
+to the client and what `getJoinUrl()` builds from, the bare id is what goes
+into the JWT `room` claim.
 
 **3. ~~Moderator claim in both places.~~ Withdrawn 3 Nov.** Their updated
 `mod_token_moderation` accepts the top-level `moderator` claim we already send,
@@ -235,8 +296,75 @@ contradicts `JITSI-JWT-FLOW.md §2.2`, which calls the suffix a historical
 artifact nothing reads. Infra's version is the live one; the flow doc is wrong
 and should be corrected.
 
-- [ ] Booking mode resolved at join
-- [ ] Room naming with the `webinar/` prefix on `roomName` only
+**Connection and token contract**, as sent to infra (Vidhyadhari Sai) on
+10 Nov. This is what their plugin work is being written against.
+
+| | Value |
+|---|---|
+| Domain | `video-sandbox.aauti.com` |
+| Join URL | `https://<domain>/<roomName>?jwt=<token>` |
+| Signing | HS256, `expiresIn: 24h` |
+| `aud` | `my-app-id` (`JITSI_APP_AUD`) |
+| `iss` | `JITSI_APP_ID` |
+| `sub` | the domain — not the tenant; `enable_domain_verification` is off |
+
+Presenter token for a live event, decoded:
+
+```json
+{
+  "context": {
+    "user": {
+      "id": "<aauti user uuid>",
+      "name": "Asha Rao",
+      "email": "asha.rao@example.com",
+      "avatar": "https://cdn.aauti.com/u/…",
+      "lobby_bypass": true
+    },
+    "metadata": {
+      "sessionId": "<session uuid>",
+      "sessionTitle": "Intro to Quantum Computing — Live Event",
+      "sessionOwnerId": "<sp uuid>",
+      "sessionOwnerName": "Asha Rao",
+      "category": "Technology",
+      "instituteId": "<institute uuid>",
+      "userRole": "instructor",
+      "env": "sandbox",
+      "members": []
+    }
+  },
+  "aud": "my-app-id",
+  "iss": "<JITSI_APP_ID>",
+  "sub": "video-sandbox.aauti.com",
+  "room": "<sessionId>-aauti-sandbox",
+  "moderator": true
+}
+```
+
+An attendee token is the same shape with `moderator: false`,
+`userRole: "subscriber"` and **no `lobby_bypass` key at all** — it is omitted
+rather than set false, and granted only to hosts, co-organisers and vetted
+in-app invitees.
+
+Three properties the plugin depends on:
+
+- `moderator` is **top-level only**. `context.user.moderator` is not sent, per their 3 Nov checklist.
+- `context.user.id` is the AAuti user UUID and is **stable across sessions, devices and rejoins** — the right key for presenter pinning. A presenter who drops and reconnects presents the same value, so they come back a presenter.
+- `context.metadata.members[]` is **always empty on a webinar** (Phase 2). Ordinary classes still carry a populated roster.
+
+Files changed, all on `feature/adhoc-live-events`:
+
+| File | Change |
+|---|---|
+| `packages/domain/src/attach.ts` | `bookingMode` added to the schedule select and to `SessionParents` |
+| `…/session/providers/video-conference.service.ts` | new `toClientRoomName()`; `JitsiRoomConfig.roomName` documented as the unprefixed claim |
+| `…/session/session.service.ts` | `getJoinInfo` splits `roomId` from `roomName` |
+
+`trial-join.service.ts` is deliberately untouched — a trial is never an event,
+and it keeps calling `generateRoomId()` on its own.
+
+- [x] Booking mode resolved at join
+- [x] Room naming with the `webinar/` prefix on `roomName` only
+- [ ] Verified against a real event session, once sandbox runs visitor mode
 
 ### Phase 2 — Attendee join path
 
@@ -250,15 +378,33 @@ done — every join gets a token, valid 24 h"* and lists `exp` as OK. The only
 requirement now is that the token **outlasts** the event, which 24 h does. No
 change.
 
-**Slim the token payload.** `getJoinInfo` builds `context.metadata.members[]`
-from the SP, co-instructors and **every enrolment**, uncapped, and the token
-travels in a URL query string. At 100+ seats this exceeds practical URL length;
-at 500 it is hopeless. Presenters only for webinars, or drop the pre-seed and
-let the board fetch its own roster. A large ordinary class already trips this,
-so it is worth fixing regardless.
+**Slim the token payload. Done.** `getJoinInfo` built
+`context.metadata.members[]` from the SP, co-instructors and **every
+enrolment**, uncapped. An event now seeds the teaching side only — the
+enrolment loop is skipped when `bookingMode === "event"`, so a webinar token
+carries the SP and co-instructors and nothing else.
 
-- [ ] Cap or drop `context.metadata.members[]` for webinar tokens
-- [ ] Check token length against a 500-seat webinar before testing
+**The ceiling is lower than this plan first claimed.** Measured against our own
+field shapes, the token is ~1 KB empty, 8 KB at 50 members without avatars,
+13 KB with them, and 121 KB at 500. The token rides the join URL twice —
+[`base/util/uri.ts:555-591`](react/features/base/util/uri.ts#L555-L591) writes
+it into the query string *and* the hash — and only the query copy counts
+against the server. `docker-build/rootfs` sets no
+`large_client_header_buffers`, so nginx's default `4 8k` applies: an 8 KB cap
+on the request line. **The break is around 30–50 members, not 100+**, and less
+once the `config` and `userInfo` params sharing that URL are counted.
+
+That means a large ordinary group class can already 414 today. This fix does
+not cover it — only events skip the roster — so the general case is still open.
+
+Left undone on purpose: a webinar still *runs* the enrolment query and throws
+the rows away. Harmless per join, wasteful at 500 joiners.
+
+- [x] Cap or drop `context.metadata.members[]` for webinar tokens
+- [x] Check token length against a 500-seat webinar before testing
+- [ ] Decide whether an ordinary class needs a cap too, or the pre-seed goes
+      away in favour of the board fetching its own roster
+- [ ] Skip the enrolment read itself for events
 
 ### Also ours, from the 3 Nov doc
 
@@ -266,6 +412,11 @@ so it is worth fixing regardless.
 `stable-11146-2` while the client is 11248, so the image template set and the
 client disagree. Infra flag it as "when convenient", but it is ours and it is
 one line.
+
+Checked 10 Nov: `stable/jitsi-meet_11248` is the newest stable tag upstream —
+there is nothing beyond it to target. The deployed sandbox web is confirmed to
+be our own build, not a stock image: the live `/libs/lib-jitsi-meet.min.js`
+is byte-identical to the `v2205.0.0+7d14f385` this repo pins.
 
 **Confirmed fine, nothing to do:** `include /config/nginx-custom/*.conf;` is
 present at `docker-build/rootfs/defaults/meet.conf:48`, and the stock visitor
@@ -314,22 +465,45 @@ what the seat was.
 Independent, unblocked, small. Last only because a webinar works without them —
 it just works wrongly.
 
-**Read the visitor flag.** `videoConferenceJoined` carries `visitor` and
-`external_api.js` exposes `isVisitor()`;
-`apps/studio/src/components/sessions/jitsi-room.tsx` discards the payload.
+**Read the visitor flag. Done.** `jitsi-room.tsx` discarded the
+`videoConferenceJoined` payload; it now passes `{ visitor }` to `onJoined`, and
+the overlay keeps it as `isVisitor`.
 
-**Participant count from our own data.** `live-session-overlay.tsx` counts Jitsi
-`participantJoined` events. Visitors are not in the main room's roster, so a
-presenter would see 3 while 500 watch.
+**Participant count from our own data. Done.** The headcount badge took Jitsi
+`participantJoined` events, which only see the main room — a presenter would
+read 3 while hundreds watch.
 
-**Set `channelLastN`.** Unset means unlimited — every client subscribes to every
-other. One value in `configOverwrite`. Infra's costing puts "forward only one or
-two speakers" among the largest savings on a webinar running $27–38/hour, almost
-all of it bandwidth, so this is a money item.
+Worth knowing: **Jitsi has a visitor count but does not expose it.**
+`state['features/visitors'].count` and `getVisitorsCount` exist and feed the
+participants pane, but nothing in `modules/API` forwards either one. The iframe
+API carries `visitor` on the join event and `isVisitor()` — a flag about *you*,
+never a number. So the count has to be ours.
 
-- [ ] Keep the `videoConferenceJoined` payload and read `visitor`
-- [ ] Replace the Jitsi-derived participant count for webinars
-- [ ] Set `channelLastN` in `configOverwrite`
+`getJoinInfo` now returns `isWebinar` and `audienceSize`, the latter one indexed
+`enrollment.count` taken only for an event. **It is registered seats, not live
+attendance** — honest about the size of the event, not about who is watching
+right now. A live figure needs an endpoint over the attendance rows `trackJoin`
+already writes, which is more than this phase.
+
+**`channelLastN` set. Done.** `WEBINAR_CHANNEL_LAST_N = 2` in
+`jitsi-room.tsx`, applied through `configOverwrite` for events only; an
+ordinary class keeps the unlimited default, where it is a quality win rather
+than a cost.
+
+Files changed, all in `aauti-platform`:
+
+| File | Change |
+|---|---|
+| `…/session/session.service.ts` | returns `isWebinar` and `audienceSize` |
+| `packages/web/src/stores/live-session.store.ts` | both fields on `JoinInfo`, defaulted in `buildJoinInfo` for an older API build |
+| `…/sessions/jitsi-room.tsx` | `isWebinar` prop, `channelLastN`, `visitor` on `onJoined` |
+| `…/sessions/live-session-overlay.tsx` | holds `isVisitor`, shows `audienceSize` on an event |
+
+- [x] Keep the `videoConferenceJoined` payload and read `visitor`
+- [x] Replace the Jitsi-derived participant count for webinars
+- [x] Set `channelLastN` in `configOverwrite`
+- [ ] Decide whether the badge should show live attendance instead of
+      registered seats, which needs an endpoint over the attendance rows
 
 ---
 
@@ -444,8 +618,11 @@ prefixed room with no plugin behind it is just a room.
 
 | Decision | Owner | Blocks |
 |---|---|---|
-| Rebase `bookingMode` onto `main`, or use an existing `Schedule` field | Us | Phase 1 room naming, and infra's scenario 9 |
+| ~~Rebase `bookingMode` onto `main`~~ — **answered 3 Nov**: `main` was merged into `feature/adhoc-live-events` and we work on the branch | — | — |
+| Does `dea53a829` (course batch tabs) merge with the branch, or come off it first? | Us | Nothing yet; it reaches `main` with the branch |
 | ~~Room-name form~~ — **answered 3 Nov**: prefix on the iframe `roomName`, JWT `room` claim unprefixed | — | — |
+| Is `participantsSoftLimit` configurable per room, or fixed at 30 in the plugin? Asked 10 Nov | Infra | What a sub-30 paid event actually behaves like — see §3 |
+| Should a small event (under 30 buyers) be watch-only at all, given the limit means it never enters visitor mode? | Product | Nothing yet; decides whether the limit needs lowering per room |
 | Does a visitor need Jitsi chat, or does the Aauti feed cover it? | Product | Infra's visitor-UI sign-off |
 | Real audience size | Infra load test | Phase 3 seat cap |
 | Who triggers the JVB scale-up 30 min before a webinar | Unclaimed | Nothing yet, but it breaks the first real webinar if nobody owns it |
@@ -489,6 +666,11 @@ answers change what we build.
 
 | Date | Change | Why |
 |---|---|---|
+| 2026-11-10 | **Phases 1, 2 and 4 confirmed committed and pushed** as `961527fbe` on `origin/feature/adhoc-live-events`. Added §3 "Who is a presenter" and "The soft limit is not a presenter/attendee split", and the connection + token contract in Phase 1. Two open decisions added about `participantsSoftLimit` | Infra (Vidhyadhari Sai) asked for sample connection details and a JWT payload to write the plugin against, so the contract is now written down rather than living in a Teams thread. Documenting roles surfaced the soft-limit misreading: it is not presenters-vs-buyers, and an event under 30 seats never enters visitor mode at all |
+| 2026-11-04 | **Phase 4 written.** Visitor flag read from the join event, `channelLastN = 2` on events, and the headcount badge switched to `audienceSize` from our own data. `tsc` clean on api, studio and `packages/web` | Checked first whether Jitsi could supply the count: `getVisitorsCount` exists in the client but `modules/API` forwards neither it nor the visitor total, so the number had to come from us. The one sent is registered seats, not live attendance — noted as a follow-up rather than quietly passed off as live |
+| 2026-11-04 | **Phase 2 written.** An event seeds only the SP and co-instructors into `context.metadata.members[]`. Measured the real ceiling and corrected this plan: the break is ~30–50 members against nginx's default 8 KB request line, not 100+ | The uncapped roster made a webinar token unjoinable long before 500 seats. The measurement also showed a big ordinary class is already at risk, which is now an open item rather than an assumption |
+| 2026-11-03 | **Phase 1 written.** `bookingMode` reaches the join path through `attachSessionParents`, and `getJoinInfo` now mints a prefixed client room name beside an unprefixed JWT `room` claim. `tsc --noEmit` clean on `services/api` | Infra's scenarios 1–8 were blocked on these two. Resolving the mode through the existing parent walk avoided both a second query and a metadata backfill |
+| 2026-11-03 | **Phase 0 closed. `main` merged into `feature/adhoc-live-events` (`5c5f0368e`), and Phase 1 onward is written on that branch** | The 149-commit gap is gone and `bookingMode` is in scope where we work, so there is no rebase to own and the open decision about it closes. `dea53a829` now needs a decision of its own, since it reaches `main` with the branch |
 | 2026-11-03 | **Phase 0 decided: the live-events branch has to land, there is no shortcut.** Reusing an existing `Schedule` field was investigated and rejected | The branch is not where the marker lives — it carries the whole product: `seatPrice`, the event-lock module, event pricing, cart/order/refund changes and ~20 marketplace components. Without it nothing can create or sell a webinar |
 | 2026-11-03 | **Three items withdrawn** against infra's 3 Nov *Infra Changes* doc: the `context.user.moderator` claim, short-lived attendee tokens, and the room-name form question. Added the exact room-name spec, the `BASE_TAG` bump, and our answer on visitor chat | Their plugin accepts the top-level claim we already send, 24 h tokens are now explicitly OK, and they specified the room name outright. Only room name and seat cap are left on us |
 | 2026-11-03 | Recorded the cause of the 2 Nov sandbox outage: random passwords in the chart restart prosody and jicofo on every sync, and jicofo lost the race | Confirms it was the redeploy, not our commits and not the values-file switch. Infra own the fix (fixed passwords + a jicofo liveness probe) |
