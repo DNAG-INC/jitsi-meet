@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDispatch, useSelector } from 'react-redux';
+import { keyframes } from 'tss-react';
 import { makeStyles } from 'tss-react/mui';
 
 import { IReduxState } from '../../../app/types';
@@ -83,8 +84,21 @@ const useStyles = makeStyles()(theme => {
         },
 
         refreshButtonBusy: {
-            opacity: 0.5,
-            pointerEvents: 'none'
+            // Spin while the request is in flight; a dimmed icon reads as
+            // disabled rather than busy.
+            pointerEvents: 'none',
+
+            '& svg': {
+                transformOrigin: 'center',
+                animation: `${keyframes`
+                    0% {
+                        transform: rotate(0);
+                    }
+                    100% {
+                        transform: rotate(360deg);
+                    }
+                `} 1s linear infinite`
+            }
         },
 
         addButton: {
