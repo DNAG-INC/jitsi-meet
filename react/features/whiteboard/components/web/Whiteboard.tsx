@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { WithTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 
 // Lazy-load the WaveBook SDK so the ~310 KB bundle only ships when a
 // participant actually opens the whiteboard. Same-origin embed (replaces
@@ -21,6 +21,7 @@ import Filmstrip from '../../../../../modules/UI/videolayout/Filmstrip';
 import { IReduxState } from '../../../app/types';
 import { translate } from '../../../base/i18n/functions';
 import { getLocalParticipant, isLocalParticipantModerator } from '../../../base/participants/functions';
+import { setFilmstripVisible } from '../../../filmstrip/actions.web';
 import { getVerticalViewMaxWidth } from '../../../filmstrip/functions.web';
 import { getToolboxHeight } from '../../../toolbox/functions.web';
 import { shouldDisplayTileView } from '../../../video-layout/functions.any';
@@ -40,6 +41,19 @@ import WhiteboardPicker from './WhiteboardPicker';
  * Space taken by meeting elements like the subject and the watermark.
  */
 const HEIGHT_OFFSET = 80;
+
+/**
+ * A phone in portrait: below this video-space width the board gets the SDK's
+ * phone layout (its own phone tier is a board narrower than 700px).
+ */
+const PHONE_MAX_WIDTH = 700;
+
+/**
+ * A phone in landscape: wider than PHONE_MAX_WIDTH, but this short. Either
+ * way the participant column would leave the board only a strip, so it is
+ * collapsed while the board is shown.
+ */
+const PHONE_MAX_HEIGHT = 500;
 
 interface IDimensions {
 
@@ -128,6 +142,59 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
         console.error('[wavebook-sdk]', e.code, e.message);
     }, []);
 
+    // #videospace toggles the meeting toolbox on every touchstart inside it
+    // (Conference._onVideospaceTouchStart). A tap on the board's own buttons
+    // and sheets must not also show/hide the toolbox: the layout shifting
+    // under the finger is what made iOS taps on ✕ and Board actions do
+    // nothing. Stopping it here leaves the board's own handling untouched.
+    const stopToolboxToggle = useCallback((e: React.TouchEvent) => {
+        e.stopPropagation();
+    }, []);
+
+    // Phone (portrait or landscape): collapse the participant column while the
+    // board is shown, so the board (and its dialogs) get the full width, and
+    // bring it back when the board goes away. Only undo what we did: if the
+    // column was already collapsed we leave it. Collapsed, Jitsi shows its own
+    // arrow, so the participants are one tap away while the board is open.
+    const dispatch = useDispatch();
+    const hidFilmstripRef = useRef(false);
+    const boardShown = isOpen && isVisible && !isInTileView;
+    const isPhone = videoSpaceWidth < PHONE_MAX_WIDTH || clientHeight < PHONE_MAX_HEIGHT;
+
+    useEffect(() => {
+        if (boardShown && isPhone) {
+            if (filmstripVisible && !hidFilmstripRef.current) {
+                hidFilmstripRef.current = true;
+                dispatch(setFilmstripVisible(false));
+            }
+        } else if (hidFilmstripRef.current) {
+            hidFilmstripRef.current = false;
+            dispatch(setFilmstripVisible(true));
+        }
+    }, [ boardShown, isPhone, filmstripVisible, dispatch ]);
+
+    // The toolbar's height, kept live. Reading it once per render
+    // (getToolboxHeight) went stale after a rotation or when the toolbar
+    // wrapped to two rows, and the toolbar then covered the board's bottom.
+    // The toolbar is always shown while the board is (isToolboxVisible), so
+    // its height is what the board must leave free.
+    const [ toolboxHeight, setToolboxHeight ] = useState(getToolboxHeight);
+
+    useEffect(() => {
+        const toolbox = document.getElementById('new-toolbox');
+
+        if (!boardShown || !toolbox) {
+            return;
+        }
+        const measure = () => setToolboxHeight(toolbox.clientHeight);
+        const observer = new ResizeObserver(measure);
+
+        measure();
+        observer.observe(toolbox);
+
+        return () => observer.disconnect();
+    }, [ boardShown ]);
+
     // Host hook for the SDK's "AI Generate" toolbar button. The SDK
     // doesn't ship an AI provider — host owns provider choice + billing.
     // We call the WaveBook server's /api/ai/generate endpoint with the
@@ -178,7 +245,7 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
             } else {
                 width = videoSpaceWidth;
             }
-            height = clientHeight - getToolboxHeight();
+            height = clientHeight - toolboxHeight;
         } else {
             if (filmstripVisible) {
                 height = clientHeight - Filmstrip.getFilmstripHeight();
@@ -211,6 +278,7 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                 isResizing && 'disable-pointer',
                 'whiteboard-container'
             ) }
+            onTouchStart = { stopToolboxToggle }
             style = {{
                 ...getDimensions(),
                 marginTop: `${HEIGHT_OFFSET}px`,
