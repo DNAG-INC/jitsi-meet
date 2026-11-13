@@ -52,7 +52,7 @@ declare global {
         ReactNativeWebView?: any;
         // selenium tests handler
         _sharedVideoPlayer: any;
-        alwaysOnTop: { api: any };
+        alwaysOnTop: { api: any; focusOpener?: () => void; };
         documentPictureInPicture?: IDocumentPictureInPicture;
     }
 

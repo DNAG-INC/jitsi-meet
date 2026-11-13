@@ -6,6 +6,7 @@ import { DEFAULT_ICON } from '../base/icons/svg/constants';
 import { IProps } from '../base/toolbox/components/AbstractButton';
 
 import ToolbarButton from './ToolbarButton';
+import { focusOpenerIfStuck } from './functions';
 
 const { api } = window.alwaysOnTop;
 
@@ -156,7 +157,14 @@ export default class VideoMuteButton extends Component<Props, State> {
      * @returns {void}
      */
     _onClick() {
-        this._setVideoMuted(!this._isVideoMuted());
+        const wasMuted = this._isVideoMuted();
+
+        this._setVideoMuted(!wasMuted);
+
+        // Only unmuting can need the device, and so a permission prompt this window cannot show.
+        if (wasMuted && this.state.videoAvailable) {
+            focusOpenerIfStuck(() => this.state.videoMuted !== wasMuted);
+        }
     }
 
     /**

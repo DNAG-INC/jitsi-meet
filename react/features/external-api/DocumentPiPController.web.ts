@@ -249,7 +249,14 @@ export default class DocumentPiPController {
         pipDocument.body.innerHTML
             = '<div class="videocontainer" id="react" style="height:100%"></div>';
 
-        newPiPWindow.alwaysOnTop = { api: this._options.api };
+        newPiPWindow.alwaysOnTop = {
+            api: this._options.api,
+
+            // Acquiring a device in the meeting needs a permission prompt, which the browser
+            // anchors to this tab and withholds while it is unfocused. The renderer calls this
+            // when a control it issued has not taken effect, so the prompt becomes answerable.
+            focusOpener: () => window.focus()
+        };
 
         newPiPWindow.addEventListener('pagehide', () => {
             if (this._pipWindow === newPiPWindow) {
