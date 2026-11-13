@@ -25,6 +25,7 @@ import { setFilmstripVisible } from '../../../filmstrip/actions.web';
 import { getVerticalViewMaxWidth } from '../../../filmstrip/functions.web';
 import { getToolboxHeight } from '../../../toolbox/functions.web';
 import { shouldDisplayTileView } from '../../../video-layout/functions.any';
+import { iAmVisitor } from '../../../visitors/functions';
 import {
     getCollabDetails,
     getWaveBookJwtContext,
@@ -85,6 +86,7 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
     const { defaultRemoteDisplayName, whiteboard, iAmRecorder } = useSelector((state: IReduxState) => state['features/base/config']);
     const localParticipant = useSelector(getLocalParticipant);
     const isLocalModerator = useSelector(isLocalParticipantModerator);
+    const _iAmVisitor = useSelector(iAmVisitor);
     const jwtCtx = useSelector(getWaveBookJwtContext);
     // Same role the picker asserts to the service. Moderators are the teaching
     // side, so they may manage board access whether or not they opened the
@@ -410,7 +412,10 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                                     name: isJibriRecorder ? 'Session Recorder' : localParticipantName,
                                                     avatarUrl: userAvatar || undefined,
                                                     hostRole,
-                                                    role: 'editor'
+                                                    // A webinar visitor watches the board, they do not
+                                                    // draw on it. Promotion to the main room remounts
+                                                    // the embed as an editor.
+                                                    role: _iAmVisitor ? 'viewer' : 'editor'
                                                 }} />
                                         </div>
                                     </Suspense>
