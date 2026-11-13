@@ -81,8 +81,8 @@ are structurally untouched.
 2. Backend mints the JWT — `moderator` at the root **and** in `context.user`; `sub` unchanged (see §5)
 3. Browser opens `https://<host>/webinar/<room>?jwt=…`
 4. Prosody verifies the token and grants presenter rights from either moderator claim
-5. `mod_webinar_visitors` recognises the prefix and sets room **metadata** `visitorsEnabled` and `participantsSoftLimit = 30`
-6. Jicofo places the first 30 arrivals in the main room and redirects the rest to a visitor node
+5. `mod_webinar_visitors` recognises the prefix and sets room **metadata** `visitorsEnabled` and `participantsSoftLimit = 0`
+6. Jicofo keeps presenters in the main room and sends every other arrival to a visitor node
 7. `mod_fmuc` mirrors presenter presence to the visitor node; **visitor presence is never broadcast** — this is what makes it scale
 8. Media still flows through JVB. Visitor nodes carry **no** audio or video
 9. Raise hand → request forwarded to the main room → presenter approves → visitor moved in with send capability
@@ -138,6 +138,11 @@ expects an event attendee to be watch-only, 30 is not that, and the knob is
 their `participantsSoftLimit`, not anything in our code. Raised with infra
 10 Nov; see §10.
 
+**Superseded 12 Nov — the cap is dropped.** `participantsSoftLimit = 0`, so an
+attendee is a visitor from arrival one at any headcount. The section stays
+because the misreading is easy to repeat: any soft limit above zero makes the
+split a function of arrival order rather than of role.
+
 ---
 
 ## 4. What DevOps is building
@@ -146,10 +151,11 @@ Four pieces do not exist in Jitsi or our deployment. Infra own all of them.
 
 | Piece | What it does |
 |---|---|
-| `mod_webinar_visitors` (new, ~40 lines) | Flags only `[webinar]` rooms, sets `participantsSoftLimit = 30`, copies presenter IDs into `moderators`. Other rooms never match |
+| `mod_webinar_visitors` (new, ~40 lines) | Flags only `[webinar]` rooms, sets `participantsSoftLimit = 0`, copies presenter IDs into `moderators`. Other rooms never match |
 | `mod_token_moderation` (update) | Today reads only the top-level `moderator`; will also accept `context.user.moderator` |
 | Visitor-node JWT auth | Visitor nodes are anonymous today, so paid seats are unenforced. This is why every attendee needs a token |
 | Visitor prosody deployment + routing | Helm StatefulSet, service, cert, s2s link, nginx routes for visitor websockets and `/conference-request/v1` |
+| `room_metadata_component` on each visitor node | Nothing rebroadcasts room metadata on a vnode today, so a visitor's `conference.metadata` is `null` — absent, not empty. `mod_visitors` forwards the metadata from the main host and `mod_fmuc` receives it, but with no component listening on the vnode no client there is ever told. This is what keeps a presenter's whiteboard invisible to the audience |
 
 Settings they change but do not code: `always_visitors_enabled = false`,
 `auto_allow_visitor_promotion = false`, and on Jicofo `ENABLE_VISITORS=1`,
@@ -499,9 +505,20 @@ Files changed, all in `aauti-platform`:
 | `…/sessions/jitsi-room.tsx` | `isWebinar` prop, `channelLastN`, `visitor` on `onJoined` |
 | `…/sessions/live-session-overlay.tsx` | holds `isVisitor`, shows `audienceSize` on an event |
 
+**The whiteboard reaches a visitor read-only. Client done, server blocked.**
+The commit is in the Jitsi fork, not `aauti-platform`.
+A presenter's board id travels in room metadata, the same channel as polls and
+the lobby, so a visitor's client opens the embed on its own. They never get a
+button of their own — `VISITORS_MODE_BUTTONS` carries no `whiteboard` — so they
+only ever see what a presenter opens. It mounted as an `editor`, which would
+have handed drawing rights to someone who cannot otherwise contribute; it now
+mounts as a `viewer` (`64e8ef332`). Nothing is visible yet: the visitor node has
+no `room_metadata_component`, so the board id never arrives — see §4 and §10.
+
 - [x] Keep the `videoConferenceJoined` payload and read `visitor`
 - [x] Replace the Jitsi-derived participant count for webinars
 - [x] Set `channelLastN` in `configOverwrite`
+- [x] Mount the whiteboard as `viewer` rather than `editor` for a visitor
 - [ ] Decide whether the badge should show live attendance instead of
       registered seats, which needs an endpoint over the attendance rows
 
@@ -621,8 +638,10 @@ prefixed room with no plugin behind it is just a room.
 | ~~Rebase `bookingMode` onto `main`~~ — **answered 3 Nov**: `main` was merged into `feature/adhoc-live-events` and we work on the branch | — | — |
 | Does `dea53a829` (course batch tabs) merge with the branch, or come off it first? | Us | Nothing yet; it reaches `main` with the branch |
 | ~~Room-name form~~ — **answered 3 Nov**: prefix on the iframe `roomName`, JWT `room` claim unprefixed | — | — |
-| Is `participantsSoftLimit` configurable per room, or fixed at 30 in the plugin? Asked 10 Nov | Infra | What a sub-30 paid event actually behaves like — see §3 |
-| Should a small event (under 30 buyers) be watch-only at all, given the limit means it never enters visitor mode? | Product | Nothing yet; decides whether the limit needs lowering per room |
+| ~~Is `participantsSoftLimit` configurable per room, or fixed at 30 in the plugin?~~ — **answered 12 Nov: there is no seat cap.** `participantsSoftLimit = 0` on `[webinar]` rooms. Everyone without `moderator: true` is a visitor from arrival one; presenters hold the main room through the plugin's `moderators` list | — | — |
+| ~~Should a small event (under 30 buyers) be watch-only at all?~~ — **answered 12 Nov: yes, at every headcount.** Watch-only is the product behaviour of an event, not a consequence of its size | — | — |
+| `room_metadata_component` on each visitor node, and on the main host of `devvideo` | Infra | A presenter's whiteboard, and every other room-state feature, reaching the audience at all |
+| Why a room routes students to visitor nodes while never advertising `muc#roominfo_visitorsEnabled` | Infra | "Move to viewer" in the presenter's participant menu — it is the only thing that flag reads |
 | Does a visitor need Jitsi chat, or does the Aauti feed cover it? | Product | Infra's visitor-UI sign-off |
 | Real audience size | Infra load test | Phase 3 seat cap |
 | Who triggers the JVB scale-up 30 min before a webinar | Unclaimed | Nothing yet, but it breaks the first real webinar if nobody owns it |
@@ -666,6 +685,9 @@ answers change what we build.
 
 | Date | Change | Why |
 |---|---|---|
+| 2026-11-13 | **A visitor mounts the whiteboard read-only, and the reason they see nothing at all is named.** `Whiteboard.tsx` passes `viewer` instead of `editor` when `iAmVisitor` (`64e8ef332`). Added the `room_metadata_component` row to §4, the whiteboard item to Phase 4, and two rows to §10 | Asked whether a visitor can see a presenter's board. They should: the board id rides room metadata like polls and the lobby, and `VISITORS_MODE_BUTTONS` already denies them a whiteboard button, so watching is the only thing they could do with it. Testing showed a black screen instead — `conference.metadata` is the full object on the presenter and `null` on the visitor. `mod_visitors` forwards it to the vnode and `mod_fmuc` stores it and fires `room-metadata-changed`, but `mod_fmuc`'s own comment says the rebroadcast is expected from "a room_metadata_component enabled on this host", and the vnodes have none. Separately, the presenter's "Move to viewer" is missing on sandbox because `features/visitors.supported` is false: the room routes students to visitor nodes and its metadata says `visitorsEnabled: true`, yet it never advertises `muc#roominfo_visitorsEnabled` in disco#info |
+| 2026-11-12 | **The 30-seat soft limit is dropped.** `participantsSoftLimit = 0` on `[webinar]` rooms: everyone without `moderator: true` is a visitor from arrival one. Both §10 questions about the limit close; §2, §3 and §4 updated to match | The 30 was infra's number, carried from their 30 Oct response into the plugin they are writing, and it was only ever recorded here as an open question — so they kept building to the one figure on paper. A cap makes watch-only a function of arrival order; the product wants it to be a function of role. `always_visitors_enabled` is not this knob — it marks rooms visitor-capable, it does not place anyone |
+| 2026-11-12 | **Webinar joins fail on sandbox at the token, not at routing.** An attendee gets `dialog.tokenAuthFailed` and a reconnect loop. Sandbox has `enable_domain_verification` on (prosody's default is `true`), so the `[webinar]` tenant is checked against `sub`, which carries the domain | §5 recorded the setting as off on prod and the token contract was written against that. Ordinary classes are unaffected because they carry no tenant prefix. Nothing to change on our side — with verification off, `verify_room` checks the room name only and already accepts `[webinar]<roomId>` against the unprefixed `room` claim |
 | 2026-11-10 | **Phases 1, 2 and 4 confirmed committed and pushed** as `961527fbe` on `origin/feature/adhoc-live-events`. Added §3 "Who is a presenter" and "The soft limit is not a presenter/attendee split", and the connection + token contract in Phase 1. Two open decisions added about `participantsSoftLimit` | Infra (Vidhyadhari Sai) asked for sample connection details and a JWT payload to write the plugin against, so the contract is now written down rather than living in a Teams thread. Documenting roles surfaced the soft-limit misreading: it is not presenters-vs-buyers, and an event under 30 seats never enters visitor mode at all |
 | 2026-11-04 | **Phase 4 written.** Visitor flag read from the join event, `channelLastN = 2` on events, and the headcount badge switched to `audienceSize` from our own data. `tsc` clean on api, studio and `packages/web` | Checked first whether Jitsi could supply the count: `getVisitorsCount` exists in the client but `modules/API` forwards neither it nor the visitor total, so the number had to come from us. The one sent is registered seats, not live attendance — noted as a follow-up rather than quietly passed off as live |
 | 2026-11-04 | **Phase 2 written.** An event seeds only the SP and co-instructors into `context.metadata.members[]`. Measured the real ceiling and corrected this plan: the break is ~30–50 members against nginx's default 8 KB request line, not 100+ | The uncapped roster made a webinar token unjoinable long before 500 seats. The measurement also showed a big ordinary class is already at risk, which is now an open item rather than an assumption |
