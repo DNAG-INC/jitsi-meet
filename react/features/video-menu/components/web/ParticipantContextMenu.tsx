@@ -150,6 +150,12 @@ const ParticipantContextMenu = ({
         = useSelector((state: IReduxState) => state['features/base/config']);
     const _audioTranslationAvailable = useSelector(isAudioTranslationAvailable);
     const visitorsSupported = useSelector((state: IReduxState) => state['features/visitors'].supported);
+
+    // AAUTI webinars: Jicofo's own visitors-supported conference property never reaches this client
+    // (confirmed empty on every participant), so fall back to the webinar room's own metadata flag,
+    // which the server already broadcasts reliably, to decide whether to offer this button.
+    const webinarVisitorsEnabled = useSelector(
+        (state: IReduxState) => Boolean(state['features/base/conference'].metadata?.visitorsEnabled));
     const { disableDemote, disableKick, disableGrantModerator } = remoteVideoMenu;
     const { participantsVolume } = useSelector((state: IReduxState) => state['features/filmstrip']);
     const _volume = (participant?.local ?? true ? undefined
@@ -281,7 +287,7 @@ const ParticipantContextMenu = ({
             buttons2.push(<GrantModeratorButton { ...getButtonProps(BUTTONS.GRANT_MODERATOR) } />);
         }
 
-        if (!disableDemote && visitorsSupported && _isModerator) {
+        if (!disableDemote && (visitorsSupported || webinarVisitorsEnabled) && _isModerator) {
             buttons2.push(<DemoteToVisitorButton { ...getButtonProps(BUTTONS.DEMOTE) } />);
         }
 
