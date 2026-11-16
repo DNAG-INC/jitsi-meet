@@ -102,7 +102,10 @@ function styles(theme: Theme, props: IProps) {
             borderRadius: '4px',
             top: 'calc(-24px - 2px)',
             left: 'calc(50% - 16px)',
-            opacity: 0,
+
+            // No hover on touch, and the only other reveal rule needs the filmstrip
+            // already collapsed - which would leave an open control with no close.
+            opacity: _isTouchDevice ? 1 : 0,
             transition: 'opacity .3s',
             zIndex: 1,
 
