@@ -382,6 +382,11 @@ export default class JitsiMeetExternalAPI extends EventEmitter {
         const allow = [
             'autoplay',
             'camera',
+
+            // The whiteboard's "Paste here" menu reads the clipboard with the
+            // async Clipboard API, which an iframe may only do when granted
+            // clipboard-read. Ctrl/Cmd+V works without it.
+            'clipboard-read',
             'clipboard-write',
             'compute-pressure',
             'display-capture',
