@@ -1,26 +1,51 @@
 name: GCP Promote
 
-run-name: "GCP Promote: jitsi-custom-web → prod #${{ github.run_number }}"
+run-name: "GCP Promote: jitsi-custom-web ${{ inputs.source_branch }} → ${{ inputs.target_branch }} #${{ github.run_number }}"
 
-# Only one hop here: sandbox -> prod (this chart has no separate dev/qa/demo,
-# values.yaml already covers the whole nonprod environment). Points
-# values-prod.yaml's web.image at the exact same tag values.yaml
-# currently uses — no rebuild, no retag, the registry is never touched
-# beyond carrying the source's repository line forward.
+# Carries a tag forward from one aauti-jitsi branch/file to another — no
+# rebuild, no retag, the registry is never touched beyond carrying the
+# source's repository line forward.
+#
+# Both source and target are configurable because this chart now has more
+# than one environment branch (main/values.yaml = regular nonprod,
+# aauti-jitsi-sandbox/values-sandbox.yaml = webinar testing,
+# webinar-nonprod/values.yaml = webinar pre-prod staging). Always set
+# source_* to match exactly what you built with (build.yml's
+# manifest_branch/manifest_file), otherwise you promote the wrong tag.
 
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'This releases to PRODUCTION. Type PROMOTE TO PROD to confirm.'
+        description: 'This promotes an environment forward. Type PROMOTE to confirm.'
         required: true
         type: string
+      source_branch:
+        description: "aauti-jitsi branch to read the tested tag FROM (must match what you built with)"
+        required: true
+        type: string
+        default: main
+      source_file:
+        description: "aauti-jitsi values file to read the tested tag FROM (must match what you built with)"
+        required: true
+        type: string
+        default: values.yaml
+      target_branch:
+        description: "aauti-jitsi branch to write the tag TO"
+        required: true
+        type: string
+        default: main
+      target_file:
+        description: "aauti-jitsi values file to write the tag TO"
+        required: true
+        type: string
+        default: values-prod.yaml
 
 permissions:
   contents: read
 
 concurrency:
-  group: gcp-promote-jitsi-custom-web-prod
+  group: gcp-promote-jitsi-custom-web
   cancel-in-progress: false
 
 env:
@@ -28,15 +53,15 @@ env:
 
 jobs:
   promote:
-    name: sandbox -> prod
+    name: promote tag between environments
     runs-on: ubuntu-latest
     # Uncomment to require manual approval before promoting to prod:
     # environment: production
     steps:
-      - name: Verify production confirmation
+      - name: Verify promotion confirmation
         run: |
-          if [[ "${{ inputs.confirm }}" != "PROMOTE TO PROD" ]]; then
-            echo "::error::Confirmation text didn't match — you must type exactly 'PROMOTE TO PROD' to release to production. Nothing was changed."
+          if [[ "${{ inputs.confirm }}" != "PROMOTE" ]]; then
+            echo "::error::Confirmation text didn't match — you must type exactly 'PROMOTE'. Nothing was changed."
             exit 1
           fi
 
@@ -49,31 +74,43 @@ jobs:
           owner: DNAG-PlatformEngineering
           repositories: aauti-jitsi
 
-      - name: Checkout aauti-jitsi
+      - name: Checkout aauti-jitsi (source branch — read tag from here)
         uses: actions/checkout@v4
         with:
           repository: ${{ env.K8S_REPO }}
+          ref: ${{ inputs.source_branch }}
           token: ${{ steps.k8s-token.outputs.token }}
+          path: source
 
-      - name: Read current tag+repository from sandbox (web block only)
+      - name: Checkout aauti-jitsi (target branch — write tag to here)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.K8S_REPO }}
+          ref: ${{ inputs.target_branch }}
+          token: ${{ steps.k8s-token.outputs.token }}
+          path: target
+
+      - name: Read current tag+repository from source (web block only)
         id: current
         run: |
           # tr -d strips any trailing \r — this file is CRLF, and the
           # repository line's unbounded `.*` capture would otherwise pull a
           # stray carriage return into the variable and corrupt the line
           # this gets written into later.
-          FROM_REPO=$(awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f && /^\s*repository:/{print; exit}' values.yaml | sed -E 's/.*repository:\s*(.*)/\1/' | tr -d '\r')
-          FROM_TAG=$(awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f && /^\s*tag:/{print; exit}' values.yaml | sed -E 's/.*tag:\s*"(.*)"/\1/' | tr -d '\r')
+          FILE="source/${{ inputs.source_file }}"
+          FROM_REPO=$(awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f && /^\s*repository:/{print; exit}' "$FILE" | sed -E 's/.*repository:\s*(.*)/\1/' | tr -d '\r')
+          FROM_TAG=$(awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f && /^\s*tag:/{print; exit}' "$FILE" | sed -E 's/.*tag:\s*"(.*)"/\1/' | tr -d '\r')
           if [[ -z "$FROM_REPO" || -z "$FROM_TAG" ]]; then
-            echo "::error::Could not read image repository/tag from values.yaml"
+            echo "::error::Could not read image repository/tag from $FILE"
             exit 1
           fi
           echo "from_repository=${FROM_REPO}" >> "$GITHUB_OUTPUT"
           echo "from_tag=${FROM_TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Update image tag for prod (web block only)
+      - name: Update image tag at target (web block only)
+        working-directory: target
         run: |
-          FILE="values-prod.yaml"
+          FILE="${{ inputs.target_file }}"
           NEW_REPO="${{ steps.current.outputs.from_repository }}"
           NEW_TAG="${{ steps.current.outputs.from_tag }}"
           # This file is CRLF throughout; awk normalizes to LF on output, so
@@ -90,8 +127,9 @@ jobs:
           awk '/^web:/{f=1} f && !/^web:/ && /^[A-Za-z]/{f=0} f' "$FILE" | grep -A2 "image:"
 
       - name: Commit and push
+        working-directory: target
         run: |
-          FILE="values-prod.yaml"
+          FILE="${{ inputs.target_file }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "$FILE"
@@ -99,5 +137,5 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "Promote jitsi-custom-web to prod: ${{ steps.current.outputs.from_tag }}"
+          git commit -m "Promote jitsi-custom-web to ${{ inputs.target_file }}@${{ inputs.target_branch }}: ${{ steps.current.outputs.from_tag }} [from ${{ inputs.source_file }}@${{ inputs.source_branch }}]"
           git push
