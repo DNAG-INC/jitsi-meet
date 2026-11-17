@@ -24,10 +24,10 @@ on:
         type: string
         default: custom/11248-whiteboard
       manifest_branch:
-        description: "aauti-jitsi branch whose values-sandbox.yaml gets the new tag (e.g. aauti-jitsi-sandbox for webinar testing)"
+        description: "aauti-jitsi branch whose values-sandbox.yaml gets the new tag (set to main for a regular, non-webinar build)"
         required: true
         type: string
-        default: main
+        default: aauti-jitsi-sandbox
 
 permissions:
   id-token: write   # required for GCP Workload Identity Federation

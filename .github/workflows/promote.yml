@@ -28,15 +28,15 @@ on:
         required: false
         type: string
       source_branch:
-        description: "aauti-jitsi branch to read values-sandbox.yaml FROM (must match what you built with, e.g. aauti-jitsi-sandbox for webinar)"
+        description: "aauti-jitsi branch to read values-sandbox.yaml FROM (must match what you built with; set to main for a regular, non-webinar promote)"
         required: true
         type: string
-        default: main
+        default: aauti-jitsi-sandbox
       target_branch:
-        description: "aauti-jitsi branch to write the target file TO (e.g. webinar-nonprod)"
+        description: "aauti-jitsi branch to write the target file TO (set to main for a regular, non-webinar promote)"
         required: true
         type: string
-        default: main
+        default: webinar-nonprod
 
 permissions:
   contents: read
