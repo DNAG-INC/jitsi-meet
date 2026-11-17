@@ -23,6 +23,16 @@ on:
         required: true
         type: string
         default: custom/11146-whiteboard
+      manifest_branch:
+        description: "aauti-jitsi branch to commit the image tag bump to"
+        required: true
+        type: string
+        default: main
+      manifest_file:
+        description: "aauti-jitsi values file to update (must have a web: block)"
+        required: true
+        type: string
+        default: values.yaml
 
 permissions:
   id-token: write   # required for GCP Workload Identity Federation
@@ -105,11 +115,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.K8S_REPO }}
+          ref: ${{ inputs.manifest_branch }}
           token: ${{ steps.k8s-token.outputs.token }}
 
       - name: Update image tag (web block only)
         run: |
-          FILE="values.yaml"
+          FILE="${{ inputs.manifest_file }}"
           NEW_REPO="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.AR_PROJECT }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_NAME }}"
           NEW_TAG="${{ needs.build.outputs.tag }}"
           # Scoped to the `web:` top-level block only (from the line that
@@ -132,7 +143,7 @@ jobs:
 
       - name: Commit and push
         run: |
-          FILE="values.yaml"
+          FILE="${{ inputs.manifest_file }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "$FILE"
@@ -140,5 +151,5 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "Update jitsi-custom-web (sandbox) image tag to ${{ needs.build.outputs.tag }}"
+          git commit -m "Update jitsi-custom-web (sandbox) image tag to ${{ needs.build.outputs.tag }} [$FILE@${{ inputs.manifest_branch }}]"
           git push

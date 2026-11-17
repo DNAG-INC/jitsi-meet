@@ -92,6 +92,11 @@ export interface IConferenceMetadata {
     visitors?: {
         live: boolean;
     };
+
+    /**
+     * AAUTI webinars: set by the server's webinar room module when visitor mode is enabled for this room.
+     */
+    visitorsEnabled?: boolean;
     whiteboard?: {
         collabDetails: {
             roomId: string;
