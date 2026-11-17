@@ -410,7 +410,11 @@ const Whiteboard = (props: WithTranslation): JSX.Element => {
                                                     // the iAmRecorder config (which otherwise falls back to the
                                                     // Jitsi display name).
                                                     name: isJibriRecorder ? 'Session Recorder' : localParticipantName,
-                                                    avatarUrl: userAvatar || undefined,
+                                                    // Sent even when empty. An empty value is this host saying the
+                                                    // user has no picture, and is what lets the server clear a stale
+                                                    // one; collapsing it to undefined dropped the header entirely, so
+                                                    // the first avatar ever written against this id stayed for good.
+                                                    avatarUrl: userAvatar,
                                                     hostRole,
                                                     // A webinar visitor watches the board, they do not
                                                     // draw on it. Promotion to the main room remounts
