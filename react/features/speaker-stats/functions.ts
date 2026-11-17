@@ -54,6 +54,63 @@ export function getSpeakerStats(state: IReduxState) {
 }
 
 /**
+ * Folds the speaker stats rows left behind by a person's earlier sessions into
+ * the row for the session they are in the call under now.
+ *
+ * A reload gives the same person a new participant id, so every client that
+ * stayed in the call lists them once per session. Prosody merges the sessions
+ * for anyone joining after the reload, but it never resends the list to the
+ * clients already there.
+ *
+ * @param {ISpeakerStats} stats - The speaker stats, keyed by participant id.
+ * @param {Object} participantUserIds - Participant id to AAuti user id.
+ * @returns {ISpeakerStats} - The stats with one row per person.
+ */
+export function mergeRejoinedSessions(stats: ISpeakerStats, participantUserIds: { [id: string]: string; }) {
+    const sessionsByUser: { [userId: string]: string[]; } = {};
+
+    for (const id of Object.keys(stats)) {
+        const userId = participantUserIds[id];
+
+        if (userId) {
+            sessionsByUser[userId] = (sessionsByUser[userId] ?? []).concat(id);
+        }
+    }
+
+    const merged = { ...stats };
+    let rejoined = false;
+
+    for (const sessions of Object.values(sessionsByUser)) {
+        if (sessions.length < 2) {
+            continue;
+        }
+
+        // The session still in the call owns the row - it carries the current
+        // name and keeps counting. For someone who has since left for good,
+        // their most recent session owns it instead.
+        const current = sessions.find(id => !stats[id].hasLeft()) ?? sessions[sessions.length - 1];
+        let carried = 0;
+
+        for (const id of sessions) {
+            if (id !== current) {
+                carried += stats[id].getTotalDominantSpeakerTime();
+                delete merged[id];
+            }
+        }
+
+        // A copy, because the original belongs to the stats collector and
+        // would take the same carried time again on the next tick.
+        const row: ISpeaker = Object.assign(Object.create(Object.getPrototypeOf(stats[current])), stats[current]);
+
+        row.totalDominantSpeakerTime += carried;
+        merged[current] = row;
+        rejoined = true;
+    }
+
+    return rejoined ? merged : stats;
+}
+
+/**
  * Gets speaker stats search criteria.
  *
  * @param {IReduxState} state - The redux state.

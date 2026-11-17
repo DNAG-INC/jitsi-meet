@@ -8,6 +8,7 @@ import { initUpdateStats } from '../actions.any';
 import {
     SPEAKER_STATS_RELOAD_INTERVAL
 } from '../constants';
+import { mergeRejoinedSessions } from '../functions';
 
 /**
  * Component that renders the list of speaker stats.
@@ -32,7 +33,14 @@ const abstractSpeakerStatsList = (speakerStatsItem: Function): Function[] => {
         state['features/base/config']) || {};
     const { faceLandmarks } = useSelector((state: IReduxState) => state['features/face-landmarks'])
         || { faceLandmarks: [] };
+    const participantUserIds = useSelector(
+        (state: IReduxState) => state['features/speaker-stats'].participantUserIds);
     const reloadInterval = useRef<number>();
+    const participantUserIdsRef = useRef(participantUserIds);
+
+    // The reload interval closes over getSpeakerStats once, so the map has to
+    // be read through a ref or everyone who joined since stays invisible to it.
+    participantUserIdsRef.current = participantUserIds;
 
     /**
      * Update the internal state with the latest speaker stats.
@@ -67,7 +75,7 @@ const abstractSpeakerStatsList = (speakerStatsItem: Function): Function[] => {
             }
         }
 
-        return stats ?? {};
+        return mergeRejoinedSessions(stats ?? {}, participantUserIdsRef.current);
     }, [ faceLandmarks ]);
 
     const updateStats = useCallback(

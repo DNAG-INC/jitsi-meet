@@ -1,5 +1,6 @@
 import { assign } from 'lodash-es';
 
+import { PARTICIPANT_JOINED, PARTICIPANT_UPDATED } from '../base/participants/actionTypes';
 import ReducerRegistry from '../base/redux/ReducerRegistry';
 import { FaceLandmarks } from '../face-landmarks/types';
 
@@ -24,6 +25,7 @@ import {
  */
 const INITIAL_STATE = {
     stats: {},
+    participantUserIds: {},
     isOpen: false,
     pendingReorder: true,
     criteria: null,
@@ -54,6 +56,7 @@ export interface ISpeaker {
     setDisplayName: (newName: string) => void;
     setDominantSpeaker: (isNowDominantSpeaker: boolean, silence: boolean) => void;
     setFaceLandmarks: (faceLandmarks: FaceLandmarks[]) => void;
+    totalDominantSpeakerTime: number;
 }
 
 export interface ISpeakerStats {
@@ -65,6 +68,7 @@ export interface ISpeakerStatsState {
     isOpen: boolean;
     offsetLeft: number;
     offsetRight: number;
+    participantUserIds: { [participantId: string]: string; };
     pendingReorder: boolean;
     showFaceExpressions: boolean;
     sortedSpeakerStatsIds: Array<string>;
@@ -83,6 +87,9 @@ ReducerRegistry.register<ISpeakerStatsState>('features/speaker-stats',
         return _updateCriteria(state, action);
     case UPDATE_STATS:
         return _updateStats(state, action);
+    case PARTICIPANT_JOINED:
+    case PARTICIPANT_UPDATED:
+        return _rememberParticipantUserId(state, action);
     case INIT_REORDER_STATS:
         return _initReorderStats(state);
     case UPDATE_SORTED_SPEAKER_STATS_IDS:
@@ -172,6 +179,36 @@ function _updateSortedSpeakerStats(state: ISpeakerStatsState, { participantIds }
         ...state,
         sortedSpeakerStatsIds: participantIds,
         pendingReorder: false
+    };
+}
+
+/**
+ * Records the AAuti user id a participant is in the call under.
+ *
+ * Never cleared when they leave: a reload leaves that session's speaker stats
+ * row behind under a participant id nobody can look up any more, and this map
+ * is all that is left to tie the row to a person.
+ *
+ * @param {Object} state - The Redux state of the feature speaker-stats.
+ * @param {Action} action - The Redux action to reduce.
+ * @private
+ * @returns {Object} The new state after the reduction of the specified action.
+ */
+function _rememberParticipantUserId(
+        state: ISpeakerStatsState,
+        { participant }: { participant?: { id?: string; jwtId?: string; }; }) {
+    const { id, jwtId } = participant ?? {};
+
+    if (!id || !jwtId || state.participantUserIds[id] === jwtId) {
+        return state;
+    }
+
+    return {
+        ...state,
+        participantUserIds: {
+            ...state.participantUserIds,
+            [id]: jwtId
+        }
     };
 }
 
