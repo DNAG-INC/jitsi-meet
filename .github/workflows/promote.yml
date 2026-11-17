@@ -27,6 +27,16 @@ on:
         description: 'Only for values-prod.yaml: type PROMOTE TO PROD'
         required: false
         type: string
+      source_branch:
+        description: "aauti-jitsi branch to read values-sandbox.yaml FROM (must match what you built with, e.g. aauti-jitsi-sandbox for webinar)"
+        required: true
+        type: string
+        default: main
+      target_branch:
+        description: "aauti-jitsi branch to write the target file TO (e.g. webinar-nonprod)"
+        required: true
+        type: string
+        default: main
 
 permissions:
   contents: read
@@ -62,14 +72,25 @@ jobs:
           owner: DNAG-PlatformEngineering
           repositories: aauti-jitsi
 
-      - name: Checkout aauti-jitsi
+      - name: Checkout aauti-jitsi (source branch — read values-sandbox.yaml from here)
         uses: actions/checkout@v4
         with:
           repository: ${{ env.K8S_REPO }}
+          ref: ${{ inputs.source_branch }}
           token: ${{ steps.k8s-token.outputs.token }}
+          path: source
+
+      - name: Checkout aauti-jitsi (target branch — write ${{ inputs.target }} to here)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.K8S_REPO }}
+          ref: ${{ inputs.target_branch }}
+          token: ${{ steps.k8s-token.outputs.token }}
+          path: target
 
       - name: Read current tag+repository from sandbox (web block only)
         id: current
+        working-directory: source
         run: |
           # tr -d strips any trailing \r so a CRLF file can't leak a carriage
           # return into the values written below.
@@ -84,6 +105,7 @@ jobs:
           echo "from_tag=${FROM_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Update image tag in ${{ inputs.target }} (web block only)
+        working-directory: target
         run: |
           FILE="${{ inputs.target }}"
           NEW_REPO="${{ steps.current.outputs.from_repository }}"
@@ -120,6 +142,7 @@ jobs:
           git diff --stat
 
       - name: Commit and push
+        working-directory: target
         run: |
           FILE="${{ inputs.target }}"
           git config user.name "github-actions[bot]"
@@ -129,5 +152,5 @@ jobs:
             echo "No changes to commit — $FILE already uses the sandbox image"
             exit 0
           fi
-          git commit -m "Promote jitsi-custom-web to ${FILE}: ${{ steps.current.outputs.from_tag }}"
+          git commit -m "Promote jitsi-custom-web to ${FILE}@${{ inputs.target_branch }}: ${{ steps.current.outputs.from_tag }} [from values-sandbox.yaml@${{ inputs.source_branch }}]"
           git push

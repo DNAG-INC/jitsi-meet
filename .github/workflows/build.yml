@@ -23,6 +23,11 @@ on:
         required: true
         type: string
         default: custom/11248-whiteboard
+      manifest_branch:
+        description: "aauti-jitsi branch whose values-sandbox.yaml gets the new tag (e.g. aauti-jitsi-sandbox for webinar testing)"
+        required: true
+        type: string
+        default: main
 
 permissions:
   id-token: write   # required for GCP Workload Identity Federation
@@ -110,6 +115,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.K8S_REPO }}
+          ref: ${{ inputs.manifest_branch }}
           token: ${{ steps.k8s-token.outputs.token }}
 
       - name: Update image tag (web block only)
@@ -145,5 +151,5 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "Update jitsi-custom-web (sandbox) image tag to ${{ needs.build.outputs.tag }}"
+          git commit -m "Update jitsi-custom-web (sandbox) image tag to ${{ needs.build.outputs.tag }} [values-sandbox.yaml@${{ inputs.manifest_branch }}]"
           git push
