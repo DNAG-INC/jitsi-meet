@@ -5,7 +5,7 @@ import { makeStyles } from 'tss-react/mui';
 
 import { IReduxState } from '../../../app/types';
 import { isMobileBrowser } from '../../../base/environment/utils';
-import { getLocalParticipant, isLocalParticipantModerator } from '../../../base/participants/functions';
+import { getLocalParticipant } from '../../../base/participants/functions';
 import ContextMenu from '../../../base/ui/components/web/ContextMenu';
 import { isReactionsButtonEnabled, shouldDisplayReactionsButtons } from '../../../reactions/functions.web';
 import { isCCTabEnabled } from '../../../subtitles/functions.any';
@@ -79,10 +79,8 @@ export default function Toolbox({
     const dispatch = useDispatch();
     const _toolboxRef = useRef<HTMLDivElement>(null);
 
-    const conference = useSelector((state: IReduxState) => state['features/base/conference'].conference);
     const isNarrowLayout = useSelector((state: IReduxState) => state['features/base/responsive-ui'].isNarrowLayout);
     const videoSpaceWidth = useSelector((state: IReduxState) => state['features/base/responsive-ui'].videoSpaceWidth);
-    const isModerator = useSelector(isLocalParticipantModerator);
     const customToolbarButtons = useSelector((state: IReduxState) => state['features/base/config'].customToolbarButtons);
     const iAmRecorder = useSelector((state: IReduxState) => state['features/base/config'].iAmRecorder);
     const iAmSipGateway = useSelector((state: IReduxState) => state['features/base/config'].iAmSipGateway);
@@ -114,7 +112,11 @@ export default function Toolbox({
     const reducedUI = useSelector((state: IReduxState) => state['features/base/responsive-ui'].reducedUI);
     const allButtons = useToolboxButtons(customToolbarButtons);
     const isMobile = isMobileBrowser();
-    const endConferenceSupported = Boolean(conference?.isEndConferenceSupported() && isModerator);
+    // End-for-all is not offered. Tearing a room down and rebuilding it under
+    // the same name leaves Jicofo holding the dead conference and nobody can
+    // rejoin, so leaving is the only manual exit. The scheduled end still closes
+    // the meeting for everyone - see features/meeting-duration.
+    const endConferenceSupported = false;
 
     useKeyboardShortcuts(toolbarButtonsToUse);
 
