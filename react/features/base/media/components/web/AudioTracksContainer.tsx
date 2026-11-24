@@ -62,6 +62,10 @@ function isIOSWebKit(): boolean {
  * if an element is already playing, `.play()` is a no-op; if autoplay is
  * blocked the `.catch()` swallows the rejection.
  *
+ * It also re-plays on the first user gesture, which is the only thing that can
+ * lift a browser's autoplay block — see the listener for why a webinar visitor
+ * on a phone hears nothing without it.
+ *
  * On iOS WebKit, additionally rebind srcObject because the stream binding
  * gets silently detached on iframe resize even though the element still
  * reports as playing — see {@link isIOSWebKit}. The close-the-pane fallback
@@ -91,6 +95,8 @@ function useForcePlayRemoteAudio(deps: readonly unknown[]) {
                     a.play().catch(() => { /* autoplay still blocked; nothing to do */ });
                 }
             });
+
+            return audios.length;
         };
 
         // Nudge immediately on the dep change (e.g. participants pane toggled).
@@ -99,6 +105,38 @@ function useForcePlayRemoteAudio(deps: readonly unknown[]) {
         document.addEventListener('fullscreenchange', forcePlay);
         document.addEventListener('visibilitychange', forcePlay);
         window.addEventListener('focus', forcePlay);
+
+        // Browsers refuse audio playback until the document has been activated
+        // by a real user gesture, and a webinar visitor hits that every time:
+        // they are receive-only, so no getUserMedia runs (the mic grant is what
+        // normally lifts the block), and an embedded call has no prejoin screen
+        // to tap through. AudioTrack's own play() retries all fail against a
+        // policy that nothing on a timer can satisfy, and it gives up — leaving
+        // an attendee watching a silent stage until a moderator promotes them
+        // into the main room, where the mic grant finally unblocks it.
+        //
+        // The first real tap repairs it, but only for elements someone retries;
+        // the ones that already gave up stay silent forever. So retry on the
+        // gesture. `click`, not `pointerdown`: a touch only confers activation
+        // at pointerup/click. One pass is enough — the document stays activated
+        // afterwards, so later tracks play by themselves — hence the latch,
+        // which costs a boolean per click for the rest of the call.
+        let unblocked = false;
+        const onUserGesture = () => {
+            if (unblocked) {
+                return;
+            }
+
+            unblocked = forcePlay() > 0;
+        };
+
+        const removeGestureListeners = () => {
+            document.removeEventListener('click', onUserGesture, true);
+            document.removeEventListener('keydown', onUserGesture, true);
+        };
+
+        document.addEventListener('click', onUserGesture, true);
+        document.addEventListener('keydown', onUserGesture, true);
 
         // External trigger from the AAuti marketplace parent. The marketplace
         // toggles its own "mini PIP" via a CSS class on the iframe container;
@@ -129,6 +167,7 @@ function useForcePlayRemoteAudio(deps: readonly unknown[]) {
             window.removeEventListener('message', onParentMessage);
             pipVideo?.removeEventListener('enterpictureinpicture', forcePlay);
             pipVideo?.removeEventListener('leavepictureinpicture', forcePlay);
+            removeGestureListeners();
         };
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
